@@ -5,8 +5,8 @@ Local speech daemon + CLI with Whisper.cpp, plus an OpenCode plugin to create ne
 ## Prerequisites
 
 - Node.js (npm in PATH)
-- Whisper.cpp binary and model
 - OpenCode running with a server (TUI or `opencode serve`)
+- macOS audio recording via `afrecord`
 
 ## Config
 
@@ -15,14 +15,19 @@ Create `~/.config/speechd/config.json`:
 ```json
 {
   "server": { "host": "127.0.0.1", "port": 7331 },
+  "capture": {
+    "tool": "afrecord",
+    "afrecord": {
+      "bin": "afrecord",
+      "format": "cd",
+      "type": "wav"
+    }
+  },
   "provider": {
-    "type": "whisper.cpp",
-    "whisperCpp": {
-      "bin": "/path/to/whisper.cpp/main",
-      "model": "/path/to/ggml-base.bin",
-      "language": "auto",
-      "threads": 4,
-      "extraArgs": []
+    "type": "openai",
+    "openai": {
+      "model": "whisper-1",
+      "language": ""
     }
   }
 }
@@ -31,8 +36,7 @@ Create `~/.config/speechd/config.json`:
 Or use environment variables:
 
 ```
-SPEECHD_WHISPER_BIN=/path/to/whisper.cpp/main
-SPEECHD_WHISPER_MODEL=/path/to/ggml-base.bin
+OPENAI_API_KEY=your-api-key
 ```
 
 ## Run
@@ -47,12 +51,6 @@ npm run speechd
 npm run speechctl -- transcribe /path/to/audio.wav
 ```
 
-To create a new OpenCode session from an audio file:
-
-```bash
-npm run speechctl -- opencode /path/to/audio.wav
-```
-
 ## OpenCode plugin
 
 The plugin is loaded from `.opencode/plugins/speech-plugin.js` and adds a `/speech` command.
@@ -60,12 +58,19 @@ The plugin is loaded from `.opencode/plugins/speech-plugin.js` and adds a `/spee
 Usage in the OpenCode TUI:
 
 ```
-/speech /path/to/audio.wav
+/speech
 ```
 
 This will:
-1. Run `speechctl transcribe <file>`
-2. Create a **new OpenCode session** with the transcription as the prompt
+1. Toggle macOS recording with `afrecord`
+2. Transcribe the audio using OpenAI Whisper
+3. Append the transcript to the **current session prompt**
+
+You can also pass a file path to transcribe without recording:
+
+```
+/speech /path/to/audio.wav
+```
 
 Set `OPENCODE_SERVER_URL` if your OpenCode server runs on a custom URL.
 ```

@@ -22,14 +22,28 @@ export const defaultConfig = {
     host: "127.0.0.1",
     port: 7331,
   },
+  capture: {
+    tool: "afrecord",
+    afrecord: {
+      bin: "afrecord",
+      format: "cd",
+      type: "wav",
+      device: undefined,
+    },
+  },
   provider: {
-    type: "whisper.cpp",
+    type: "openai",
     whisperCpp: {
       bin: "whisper.cpp",
       model: "",
       language: "auto",
       threads: undefined,
       extraArgs: [],
+    },
+    openai: {
+      apiKey: "",
+      model: "whisper-1",
+      language: "",
     },
   },
 }
@@ -52,6 +66,15 @@ export const loadConfig = async () => {
         ? Number(process.env.SPEECHD_SERVER_PORT)
         : undefined,
     },
+    capture: {
+      tool: process.env.SPEECHD_CAPTURE_TOOL,
+      afrecord: {
+        bin: process.env.SPEECHD_AFRECORD_BIN,
+        format: process.env.SPEECHD_AFRECORD_FORMAT,
+        type: process.env.SPEECHD_AFRECORD_TYPE,
+        device: process.env.SPEECHD_AFRECORD_DEVICE,
+      },
+    },
     provider: {
       type: process.env.SPEECHD_PROVIDER,
       whisperCpp: {
@@ -62,6 +85,11 @@ export const loadConfig = async () => {
           ? Number(process.env.SPEECHD_WHISPER_THREADS)
           : undefined,
         extraArgs: parseJson(process.env.SPEECHD_WHISPER_EXTRA_ARGS, undefined),
+      },
+      openai: {
+        apiKey: process.env.OPENAI_API_KEY || process.env.SPEECHD_OPENAI_KEY,
+        model: process.env.SPEECHD_OPENAI_MODEL,
+        language: process.env.SPEECHD_OPENAI_LANG,
       },
     },
   }
