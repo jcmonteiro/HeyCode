@@ -3,6 +3,11 @@ import { Command } from "commander"
 import { loadConfig } from "../src/config/config.js"
 import { transcribeFile } from "../src/usecases/transcribeFile.js"
 import { createSessionWithPrompt } from "../src/usecases/createOpencodeSession.js"
+import {
+  startRecording,
+  stopRecording,
+  getRecordingStatus,
+} from "../src/adapters/afrecordCapture.js"
 
 const program = new Command()
 
@@ -43,6 +48,31 @@ program
     process.stdout.write(
       JSON.stringify({ sessionId: session.id, text: transcript.text }, null, 2),
     )
+  })
+
+program
+  .command("record")
+  .description("Toggle recording with afrecord")
+  .option("--status", "Print current recording status")
+  .action(async (options) => {
+    const config = await loadConfig()
+    if (options.status) {
+      const status = await getRecordingStatus()
+      process.stdout.write(
+        status ? `recording:${status.outputPath}\n` : "idle\n",
+      )
+      return
+    }
+
+    const status = await getRecordingStatus()
+    if (!status) {
+      const outputPath = await startRecording(config)
+      process.stdout.write(`recording:${outputPath}\n`)
+      return
+    }
+
+    const outputPath = await stopRecording()
+    process.stdout.write(`stopped:${outputPath}\n`)
   })
 
 program.parseAsync(process.argv)
