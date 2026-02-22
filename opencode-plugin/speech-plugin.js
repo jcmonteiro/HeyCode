@@ -4,7 +4,21 @@ import { fileURLToPath } from "node:url"
 import path from "node:path"
 
 
-const commandPrefix = "/speech"
+const commandName = "speech"
+
+const normalizeCommand = (input) => {
+  const raw = (input?.command || "").trim()
+  const withoutSlash = raw.startsWith("/") ? raw.slice(1) : raw
+  if (!withoutSlash) return { name: "", args: "" }
+  const parts = withoutSlash.split(/\s+/)
+  const name = parts.shift() || ""
+  const argsFromCommand = parts.join(" ")
+  const argsFromArray = Array.isArray(input?.arguments)
+    ? input.arguments.join(" ")
+    : ""
+  const args = argsFromArray || argsFromCommand
+  return { name, args }
+}
 
 export const SpeechPlugin = async ({ client }) => {
   const scriptPath = fileURLToPath(
@@ -17,9 +31,8 @@ export const SpeechPlugin = async ({ client }) => {
       })
     },
     "tui.command.execute": async (input) => {
-      if (!input.command?.startsWith(commandPrefix)) return
-
-      const args = input.command.replace(commandPrefix, "").trim()
+      const { name, args } = normalizeCommand(input)
+      if (name !== commandName) return
 
       if (args) {
         const { stdout } = await execa(
