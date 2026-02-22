@@ -32,10 +32,10 @@ export const defaultConfig = {
     },
   },
   provider: {
-    type: "openai",
+    type: "whisper.cpp",
     whisperCpp: {
-      bin: "whisper.cpp",
-      model: "",
+      bin: "whisper-cli",
+      model: "/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin",
       language: "auto",
       threads: undefined,
       extraArgs: [],

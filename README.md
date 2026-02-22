@@ -7,10 +7,11 @@ Local speech daemon + CLI with Whisper.cpp, plus an OpenCode plugin to create ne
 - Node.js (npm in PATH)
 - OpenCode running with a server (TUI or `opencode serve`)
 - macOS audio recording via `afrecord`
+- Whisper.cpp (via Homebrew)
 
 ## Config
 
-Create `~/.config/speechd/config.json`:
+Create `~/.config/speechd/config.json` (defaults include Homebrew whisper-cli + tiny model):
 
 ```json
 {
@@ -24,10 +25,11 @@ Create `~/.config/speechd/config.json`:
     }
   },
   "provider": {
-    "type": "openai",
-    "openai": {
-      "model": "whisper-1",
-      "language": ""
+    "type": "whisper.cpp",
+    "whisperCpp": {
+      "bin": "whisper-cli",
+      "model": "/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin",
+      "language": "auto"
     }
   }
 }
@@ -36,7 +38,8 @@ Create `~/.config/speechd/config.json`:
 Or use environment variables:
 
 ```
-OPENAI_API_KEY=your-api-key
+SPEECHD_WHISPER_BIN=whisper-cli
+SPEECHD_WHISPER_MODEL=/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin
 ```
 
 ## Run
@@ -63,7 +66,7 @@ Usage in the OpenCode TUI:
 
 This will:
 1. Toggle macOS recording with `afrecord`
-2. Transcribe the audio using OpenAI Whisper
+2. Transcribe the audio using whisper.cpp
 3. Append the transcript to the **current session prompt**
 
 You can also pass a file path to transcribe without recording:
@@ -76,3 +79,13 @@ Set `OPENCODE_SERVER_URL` if your OpenCode server runs on a custom URL.
 ```
 OPENCODE_SERVER_URL=http://127.0.0.1:4096
 ```
+
+## Improvements / Next Steps
+
+- Add VAD auto-stop and configurable silence threshold
+- Add push-to-talk hotkey integration per terminal (WezTerm/Kitty/iTerm profiles)
+- Support local Whisper.cpp model downloads and model selection
+- Add streaming transcription feedback in the TUI
+- Add permissions/consent prompts before microphone capture
+- Add Windows/Linux capture adapters (ffmpeg/arecord/sox)
+- Add transcription caching + metadata storage

@@ -28,15 +28,7 @@ export class WhisperCppProvider {
     const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "speechd-"))
     const outputBase = path.join(outputDir, "transcript")
 
-    const args = [
-      "-m",
-      model,
-      "-f",
-      filePath,
-      "-otxt",
-      "-of",
-      outputBase,
-    ]
+    const args = ["-m", model, "-f", filePath, "-otxt", "-of", outputBase]
 
     if (whisperConfig.language && whisperConfig.language !== "auto") {
       args.push("-l", whisperConfig.language)
