@@ -13,5 +13,14 @@
       "./scripts/merge-worktrees.sh": "allow",
       "./scripts/merge-worktrees.sh *": "allow"
     }
+  },
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      ".opencode/node_modules/**",
+      "bin/**",
+      "dist/**",
+      "build/**"
+    ]
   }
 }
