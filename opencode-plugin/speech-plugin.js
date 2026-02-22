@@ -6,11 +6,16 @@ import path from "node:path"
 
 const commandPrefix = "/speech"
 
-export const SpeechPlugin = async () => {
+export const SpeechPlugin = async ({ client }) => {
   const scriptPath = fileURLToPath(
     new URL("../../bin/speechctl.js", import.meta.url),
   )
   return {
+    "server.connected": async () => {
+      await client.tui.showToast({
+        body: { message: "Speech plugin loaded", variant: "success" },
+      })
+    },
     "tui.command.execute": async (input) => {
       if (!input.command?.startsWith(commandPrefix)) return
 
