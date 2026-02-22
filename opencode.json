@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "pnpm *": "allow",
+      "npx biome *": "allow",
+      "biome *": "allow",
+      "tsc *": "allow",
+      "tsc": "allow",
+      "vite *": "allow",
+      "vitest *": "allow",
+      "mise *": "allow",
+      "./scripts/merge-worktrees.sh": "allow",
+      "./scripts/merge-worktrees.sh *": "allow"
+    }
+  }
+}
