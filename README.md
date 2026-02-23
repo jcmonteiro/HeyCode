@@ -17,6 +17,7 @@ A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov
 | Dependency | Install |
 |---|---|
 | Node.js >= 18 | `brew install node` |
+| pnpm | `brew install pnpm` or `npm i -g pnpm` |
 | whisper.cpp | `brew install whisper-cpp` |
 | Whisper model | See [Model setup](#model-setup) below |
 | macOS | Built-in AVFoundation, no extra install |
@@ -53,13 +54,13 @@ swiftc scripts/hotkey.swift -o scripts/hotkey -framework Carbon
 ```bash
 git clone <this-repo>
 cd speechctl
-npm install
+pnpm install
 ```
 
 ### Link the CLI globally (optional)
 
 ```bash
-npm link
+pnpm link --global
 # Now `speechctl` is available system-wide
 ```
 
@@ -89,7 +90,7 @@ speechctl daemon
 speechctl daemon --key space --modifiers cmd,shift --clipboard
 ```
 
-If you haven't linked the CLI, use `node bin/speechctl.js` instead of `speechctl`.
+If you haven't linked the CLI, use `pnpm exec tsx bin/speechctl.ts` instead of `speechctl`.
 
 ## OpenCode plugin
 
@@ -262,47 +263,47 @@ Create `~/.config/speechd/config.json` to override defaults:
 
 ## Architecture
 
-Clean hexagonal architecture (ports & adapters). Business logic has zero framework dependencies.
+Clean hexagonal architecture (ports & adapters) in TypeScript. Business logic has zero framework dependencies.
 
 ```
 src/
   domain/              Value objects, error types (no dependencies)
-    transcript.js        Transcript value object (text + meta, immutable)
-    recording.js         Recording state value object (pid + path, immutable)
-    errors.js            Domain-specific error hierarchy (6 types)
+    transcript.ts        Transcript value object (text + meta, immutable)
+    recording.ts         Recording state value object (pid + path, immutable)
+    errors.ts            Domain-specific error hierarchy (6 types)
 
-  ports/               Interfaces (contracts)
-    recorder.js          RecorderPort: start, stop, status, [waitForStop]
-    transcriber.js       TranscriberPort: transcribe(filePath) -> Transcript
-    streaming-transcriber.js  StreamingTranscriberPort: start, stop, isActive
+  ports/               Interfaces (TypeScript contracts)
+    recorder.ts          RecorderPort: start, stop, status, [waitForStop]
+    transcriber.ts       TranscriberPort: transcribe(filePath) -> Transcript
+    streaming-transcriber.ts  StreamingTranscriberPort: start, stop, isActive
 
   usecases/            Orchestration (depends only on ports + domain)
-    toggle-recording.js       Start if idle, stop if active
-    transcribe-file.js        Delegate to TranscriberPort
-    record-and-transcribe.js  Unified record+transcribe (VAD & toggle modes)
-    start-and-wait-recording.js  VAD-only record -> wait -> transcribe
+    toggle-recording.ts       Start if idle, stop if active
+    transcribe-file.ts        Delegate to TranscriberPort
+    record-and-transcribe.ts  Unified record+transcribe (VAD & toggle modes)
+    start-and-wait-recording.ts  VAD-only record -> wait -> transcribe
 
   adapters/            Implementations of ports
-    native-recorder.js          macOS AVFoundation via Swift binary
-    whisper-cpp-transcriber.js  whisper-cli shell adapter
-    openai-transcriber.js       OpenAI Whisper API adapter
-    whisper-stream-transcriber.js  whisper-stream real-time adapter
+    native-recorder.ts          macOS AVFoundation via Swift binary
+    whisper-cpp-transcriber.ts  whisper-cli shell adapter
+    openai-transcriber.ts       OpenAI Whisper API adapter
+    whisper-stream-transcriber.ts  whisper-stream real-time adapter
 
   factories/           Wire config -> concrete adapters
-    create-recorder.js
-    create-transcriber.js
-    create-streaming-transcriber.js
+    create-recorder.ts
+    create-transcriber.ts
+    create-streaming-transcriber.ts
 
   shells/              Integration orchestrators
-    hotkey-daemon.js     Global hotkey -> record -> transcribe daemon
+    hotkey-daemon.ts     Global hotkey -> record -> transcribe daemon
 
   config/
-    config.js            Config loading (file + env merge)
+    config.ts            Config loading (file + env merge)
 
-  __tests__/           Tests (vitest)
+  __tests__/           Tests (vitest, TypeScript)
 
 bin/
-  speechctl.js         CLI entry point (thin shell)
+  speechctl.ts         CLI entry point (thin shell, runs via tsx)
 
 scripts/
   record.swift         Native macOS recorder source (AVFoundation + VAD)
@@ -329,27 +330,27 @@ domain  <--  ports  <--  usecases  <--  adapters
 ## Tests
 
 ```bash
-npm test              # Run once
-npm run test:watch    # Watch mode
-npx vitest run -t "test name"  # Single test
+pnpm test              # Run once
+pnpm run test:watch    # Watch mode
+pnpm exec vitest run -t "test name"  # Single test
 ```
 
 107 tests organized by behavior:
 
 | File | Tests | What it covers |
 |---|---|---|
-| `domain.test.js` | 15 | Transcript, Recording immutability & validation |
-| `ports.test.js` | 8 | Port assertion guards, supportsWaitForStop |
-| `toggle-recording.test.js` | 3 | Toggle use case with mocked RecorderPort |
-| `transcribe-file.test.js` | 3 | Transcribe use case with mocked TranscriberPort |
-| `record-and-transcribe.test.js` | 11 | Unified record+transcribe (VAD, toggle, callbacks) |
-| `start-and-wait-recording.test.js` | 8 | VAD record use case, waitForStop guard |
-| `whisper-cpp-transcriber.test.js` | 8 | Arg construction, text normalization, error wrapping |
-| `openai-transcriber.test.js` | 7 | API calls, normalization, error wrapping |
-| `native-recorder.test.js` | 12 | State persistence, start/stop, VAD flags |
-| `streaming-transcriber.test.js` | 13 | Port guard, args, onPartial, stop, isActive |
-| `config.test.js` | 8 | Config loading, merging, env override |
-| `factories.test.js` | 11 | Recorder, transcriber, streaming factory wiring |
+| `domain.test.ts` | 15 | Transcript, Recording immutability & validation |
+| `ports.test.ts` | 8 | Port assertion guards, supportsWaitForStop |
+| `toggle-recording.test.ts` | 3 | Toggle use case with mocked RecorderPort |
+| `transcribe-file.test.ts` | 3 | Transcribe use case with mocked TranscriberPort |
+| `record-and-transcribe.test.ts` | 11 | Unified record+transcribe (VAD, toggle, callbacks) |
+| `start-and-wait-recording.test.ts` | 8 | VAD record use case, waitForStop guard |
+| `whisper-cpp-transcriber.test.ts` | 8 | Arg construction, text normalization, error wrapping |
+| `openai-transcriber.test.ts` | 7 | API calls, normalization, error wrapping |
+| `native-recorder.test.ts` | 12 | State persistence, start/stop, VAD flags |
+| `streaming-transcriber.test.ts` | 13 | Port guard, args, onPartial, stop, isActive |
+| `config.test.ts` | 8 | Config loading, merging, env override |
+| `factories.test.ts` | 11 | Recorder, transcriber, streaming factory wiring |
 
 ## Future improvements
 
