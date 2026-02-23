@@ -1,25 +1,24 @@
 {
-  "name": "speechd-prototype",
+  "name": "opencode-speech-plugin",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
   "bin": {
-    "speechctl": "bin/speechctl.js",
-    "speechd": "bin/speechd.js"
+    "speechctl": "bin/speechctl.js"
   },
   "scripts": {
-    "speechd": "node bin/speechd.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "speechctl": "node bin/speechctl.js",
     "speech": "node bin/speechctl.js record"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["opencode", "speech", "whisper", "transcription"],
   "license": "ISC",
-  "description": "Reusable local speech daemon and CLI",
+  "description": "OpenCode speech-to-text plugin: macOS microphone recording + whisper.cpp transcription",
   "dependencies": {
-    "@opencode-ai/sdk": "^1.2.10",
     "commander": "^14.0.3",
-    "execa": "^9.6.1",
-    "zod": "^4.3.6"
+    "execa": "^9.6.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
   }
 }

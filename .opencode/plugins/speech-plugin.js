@@ -1,264 +1,185 @@
 /**
  * OpenCode Speech Plugin
  *
- * Provides speech-to-text for OpenCode:
+ * Thin integration shell that wires the speech domain into OpenCode:
  * - /speech command: toggles microphone recording, transcribes, appends to prompt
  * - speech_record tool: allows the LLM to trigger recording on behalf of the user
  *
- * Uses native macOS AVFoundation recorder + whisper-cli for transcription.
- * Appends transcript to the current session prompt (never creates a new session).
+ * All business logic lives in src/usecases/ and src/adapters/.
+ * This file only handles OpenCode-specific concerns (toasts, prompt appending).
  *
- * This file lives in .opencode/plugins/ so it can resolve @opencode-ai/plugin
- * from .opencode/node_modules/.
+ * Lives in .opencode/plugins/ to resolve @opencode-ai/plugin from .opencode/node_modules/.
  */
 import { tool } from "@opencode-ai/plugin"
-import { execa } from "execa"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const projectRoot = path.resolve(__dirname, "..", "..")
 
 // ---------------------------------------------------------------------------
-// Paths
+// Lazy-loaded dependencies (avoids top-level import issues in plugin context)
 // ---------------------------------------------------------------------------
 
-/** Project root is two levels up from .opencode/plugins/ */
-const projectRoot = () => path.resolve(__dirname, "..", "..")
+let _recorder = null
+let _transcriber = null
 
-const speechctlPath = () => path.join(projectRoot(), "bin", "speechctl.js")
+async function getDeps() {
+  if (_recorder && _transcriber) return { recorder: _recorder, transcriber: _transcriber }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+  const { loadConfig } = await import(
+    path.join(projectRoot, "src", "config", "config.js")
+  )
+  const { createRecorder } = await import(
+    path.join(projectRoot, "src", "factories", "create-recorder.js")
+  )
+  const { createTranscriber } = await import(
+    path.join(projectRoot, "src", "factories", "create-transcriber.js")
+  )
 
-/** Run speechctl with given args and return stdout */
-const speechctl = async (args) => {
-  const { stdout } = await execa(process.execPath, [speechctlPath(), ...args], {
-    cwd: projectRoot(),
-    timeout: 60_000,
-  })
-  return stdout.trim()
+  const config = await loadConfig()
+  _recorder = createRecorder(config)
+  _transcriber = createTranscriber(config)
+  return { recorder: _recorder, transcriber: _transcriber }
 }
 
 // ---------------------------------------------------------------------------
-// Core speech actions
+// Toast helpers (never throw — TUI may not be ready)
 // ---------------------------------------------------------------------------
 
-/**
- * Toggle recording. Returns { action, outputPath? }
- */
-const toggleRecording = async () => {
-  const statusOutput = await speechctl(["record", "--status"])
-  const isRecording = statusOutput.startsWith("recording:")
-
-  if (!isRecording) {
-    const output = await speechctl(["record"])
-    if (!output.startsWith("recording:")) {
-      throw new Error(`Failed to start recording: ${output}`)
-    }
-    return { action: "started" }
+const toast = async (client, message, variant = "info") => {
+  try {
+    await client.tui.showToast({ body: { message, variant } })
+  } catch {
+    // TUI not ready
   }
-
-  const output = await speechctl(["record"])
-  if (!output.startsWith("stopped:")) {
-    throw new Error(`Failed to stop recording: ${output}`)
-  }
-  const outputPath = output.replace("stopped:", "").trim()
-  return { action: "stopped", outputPath }
-}
-
-/**
- * Transcribe an audio file. Returns the text (may be empty for silence).
- */
-const transcribe = async (filePath) => {
-  return await speechctl(["transcribe", filePath])
 }
 
 // ---------------------------------------------------------------------------
-// Plugin (correct @opencode-ai/plugin API)
+// Plugin
 // ---------------------------------------------------------------------------
 
 /** @type {import("@opencode-ai/plugin").Plugin} */
 const SpeechPlugin = async ({ client }) => {
-  // Track whether we've shown the load toast
   let greeted = false
 
   return {
-    // -----------------------------------------------------------------------
-    // Event handler — fires for every OpenCode event
-    // -----------------------------------------------------------------------
     event: async ({ event }) => {
-      // Show a one-time toast so the user knows the plugin loaded
       if (!greeted && event.type === "server.connected") {
         greeted = true
-        try {
-          await client.tui.showToast({
-            body: { message: "Speech plugin loaded", variant: "success" },
-          })
-        } catch {
-          // TUI might not be ready yet, that's OK
-        }
+        await toast(client, "Speech plugin loaded", "success")
       }
     },
 
-    // -----------------------------------------------------------------------
-    // Command hook — intercepts /speech before it reaches the LLM
-    // -----------------------------------------------------------------------
     "command.execute.before": async (input, output) => {
-      // input: { command: string, sessionID: string, arguments: string }
-      // output: { parts: Part[] }
-      const cmd = (input.command || "").trim()
-      if (cmd !== "speech") return
+      if ((input.command || "").trim() !== "speech") return
 
       try {
+        const { toggleRecording } = await import(
+          path.join(projectRoot, "src", "usecases", "toggle-recording.js")
+        )
+        const { transcribeFile } = await import(
+          path.join(projectRoot, "src", "usecases", "transcribe-file.js")
+        )
+        const { recorder, transcriber } = await getDeps()
         const args = (input.arguments || "").trim()
 
-        // Case 1: /speech <filepath> — transcribe a given file
+        // /speech <filepath> — transcribe a given file directly
         if (args) {
-          await client.tui.showToast({
-            body: { message: "Transcribing file...", variant: "info" },
-          })
-          const text = await transcribe(args)
-          if (!text) {
-            await client.tui.showToast({
-              body: { message: "No speech detected in file", variant: "warning" },
-            })
-            output.parts = []
-            return
+          await toast(client, "Transcribing file...")
+          const transcript = await transcribeFile({ transcriber, filePath: args })
+          if (transcript.isEmpty) {
+            await toast(client, "No speech detected in file", "warning")
+          } else {
+            await client.tui.appendPrompt({ body: { text: transcript.text } })
+            await toast(client, "Transcript appended to prompt", "success")
           }
-          await client.tui.appendPrompt({ body: { text } })
-          await client.tui.showToast({
-            body: {
-              message: "Transcript appended to prompt",
-              variant: "success",
-            },
-          })
-          // Set output parts to empty so the command isn't sent to the LLM
           output.parts = []
           return
         }
 
-        // Case 2: /speech — toggle recording
-        const result = await toggleRecording()
+        // /speech — toggle recording
+        const result = await toggleRecording({ recorder })
 
         if (result.action === "started") {
-          await client.tui.showToast({
-            body: {
-              message: "Recording... type /speech again to stop",
-              variant: "info",
-              duration: 10_000,
-            },
-          })
+          await toast(client, "Recording... type /speech again to stop")
           output.parts = []
           return
         }
 
         // Stopped — transcribe and append
-        await client.tui.showToast({
-          body: { message: "Transcribing...", variant: "info" },
+        await toast(client, "Transcribing...")
+        const transcript = await transcribeFile({
+          transcriber,
+          filePath: result.outputPath,
         })
-        const text = await transcribe(result.outputPath)
-        if (!text) {
-          await client.tui.showToast({
-            body: { message: "No speech detected — try again", variant: "warning" },
-          })
-          output.parts = []
-          return
+
+        if (transcript.isEmpty) {
+          await toast(client, "No speech detected — try again", "warning")
+        } else {
+          await client.tui.appendPrompt({ body: { text: transcript.text } })
+          await toast(client, "Transcript appended to prompt", "success")
         }
-        await client.tui.appendPrompt({ body: { text } })
-        await client.tui.showToast({
-          body: {
-            message: "Transcript appended to prompt",
-            variant: "success",
-          },
-        })
         output.parts = []
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        await client.tui.showToast({
-          body: { message: `Speech error: ${message}`, variant: "error" },
-        })
+        await toast(client, `Speech error: ${err.message || err}`, "error")
         output.parts = []
       }
     },
 
-    // -----------------------------------------------------------------------
-    // Custom tool — lets the LLM trigger recording
-    // -----------------------------------------------------------------------
     tool: {
       speech_record: tool({
         description:
           "Toggle microphone recording for speech-to-text. " +
           "Call once to start recording, call again to stop, transcribe, and " +
-          "return the transcript text. The user can speak into their microphone " +
-          "and the transcript will be returned.",
+          "return the transcript text.",
         args: {
           file: tool.schema
             .string()
             .optional()
             .describe(
               "Optional path to an existing audio file to transcribe directly. " +
-              "If omitted, toggles live microphone recording.",
+                "If omitted, toggles live microphone recording.",
             ),
         },
         async execute(args) {
+          const { toggleRecording } = await import(
+            path.join(projectRoot, "src", "usecases", "toggle-recording.js")
+          )
+          const { transcribeFile } = await import(
+            path.join(projectRoot, "src", "usecases", "transcribe-file.js")
+          )
+          const { recorder, transcriber } = await getDeps()
+
           // Direct file transcription
           if (args.file) {
-            const text = await transcribe(args.file)
-            if (!text) return "No speech detected in the audio file."
-            return `Transcript: ${text}`
+            const transcript = await transcribeFile({ transcriber, filePath: args.file })
+            if (transcript.isEmpty) return "No speech detected in the audio file."
+            return `Transcript: ${transcript.text}`
           }
 
           // Toggle recording
-          const result = await toggleRecording()
+          const result = await toggleRecording({ recorder })
 
           if (result.action === "started") {
-            try {
-              await client.tui.showToast({
-                body: {
-                  message:
-                    "Recording... the tool will be called again to stop",
-                  variant: "info",
-                  duration: 10_000,
-                },
-              })
-            } catch {
-              // ignore toast errors
-            }
+            await toast(client, "Recording... the tool will be called again to stop")
             return "Recording started. Call this tool again (without arguments) to stop and get the transcript."
           }
 
           // Stopped — transcribe
-          try {
-            await client.tui.showToast({
-              body: { message: "Transcribing...", variant: "info" },
-            })
-          } catch {
-            // ignore
-          }
+          await toast(client, "Transcribing...")
+          const transcript = await transcribeFile({
+            transcriber,
+            filePath: result.outputPath,
+          })
 
-          const text = await transcribe(result.outputPath)
-
-          if (!text) {
-            try {
-              await client.tui.showToast({
-                body: { message: "No speech detected", variant: "warning" },
-              })
-            } catch {
-              // ignore
-            }
+          if (transcript.isEmpty) {
+            await toast(client, "No speech detected", "warning")
             return "No speech detected. The recording was silent. Ask the user to try again."
           }
 
-          try {
-            await client.tui.showToast({
-              body: { message: "Transcription complete", variant: "success" },
-            })
-          } catch {
-            // ignore
-          }
-
-          return `Transcript: ${text}`
+          await toast(client, "Transcription complete", "success")
+          return `Transcript: ${transcript.text}`
         },
       }),
     },
