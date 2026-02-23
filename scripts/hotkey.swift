@@ -1,8 +1,11 @@
 #!/usr/bin/env swift
 // Global hotkey listener for speech-to-text.
 //
-// Registers a system-wide keyboard shortcut and writes a trigger file
+// Monitors for a system-wide keyboard shortcut and writes a trigger file
 // when pressed. The Node.js daemon watches this file to start/stop recording.
+//
+// Uses NSEvent.addGlobalMonitorForEvents (Cocoa) instead of the deprecated
+// Carbon RegisterEventHotKey API, which fails silently on modern macOS.
 //
 // Usage:
 //   hotkey                                    # Default: Cmd+Shift+Space
@@ -10,6 +13,7 @@
 //   hotkey --trigger-path /tmp/heycode-trigger # Custom trigger file path
 //
 // Requires Accessibility permissions (System Settings → Privacy → Accessibility).
+// The terminal app running this binary must be granted Accessibility access.
 //
 // Stdout protocol:
 //   ready                — hotkey registered successfully
@@ -17,7 +21,6 @@
 //   error:<message>      — something went wrong
 
 import Cocoa
-import Carbon
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -37,24 +40,24 @@ let modifiersStr = argValue("--modifiers") ?? "cmd,shift"
 let keyStr = argValue("--key") ?? "space"
 
 // ---------------------------------------------------------------------------
-// Parse key and modifiers
+// Parse key code and modifier flags
 // ---------------------------------------------------------------------------
 
-func parseModifiers(_ str: String) -> UInt32 {
-    var flags: UInt32 = 0
+func parseModifierFlags(_ str: String) -> NSEvent.ModifierFlags {
+    var flags = NSEvent.ModifierFlags()
     for mod in str.split(separator: ",") {
         switch mod.lowercased().trimmingCharacters(in: .whitespaces) {
-        case "cmd", "command":  flags |= UInt32(cmdKey)
-        case "shift":           flags |= UInt32(shiftKey)
-        case "ctrl", "control": flags |= UInt32(controlKey)
-        case "alt", "option":   flags |= UInt32(optionKey)
+        case "cmd", "command":  flags.insert(.command)
+        case "shift":           flags.insert(.shift)
+        case "ctrl", "control": flags.insert(.control)
+        case "alt", "option":   flags.insert(.option)
         default: break
         }
     }
     return flags
 }
 
-func parseKeyCode(_ str: String) -> UInt32 {
+func parseKeyCode(_ str: String) -> UInt16 {
     // Common key codes (US keyboard layout)
     switch str.lowercased() {
     case "space":       return 49
@@ -89,8 +92,21 @@ func parseKeyCode(_ str: String) -> UInt32 {
     }
 }
 
-let keyCode = parseKeyCode(keyStr)
-let modifiers = parseModifiers(modifiersStr)
+let targetKeyCode = parseKeyCode(keyStr)
+let targetModifiers = parseModifierFlags(modifiersStr)
+
+// ---------------------------------------------------------------------------
+// Accessibility check
+// ---------------------------------------------------------------------------
+
+if !AXIsProcessTrusted() {
+    let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(opts)
+    fputs("error:accessibility permission required. Grant access in System Settings → Privacy → Accessibility.\n", stderr)
+    print("error:accessibility permission required")
+    fflush(stdout)
+    exit(1)
+}
 
 // ---------------------------------------------------------------------------
 // Ensure trigger directory exists
@@ -103,68 +119,43 @@ try? FileManager.default.createDirectory(
 )
 
 // ---------------------------------------------------------------------------
-// Register global hotkey
+// NSApplication setup (required for global event monitoring)
 // ---------------------------------------------------------------------------
 
-var hotKeyRef: EventHotKeyRef?
-let hotKeyID = EventHotKeyID(signature: OSType(0x5350_4348), id: 1) // "SPCH"
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
 
-var gHotKeyID = hotKeyID
-let status = RegisterEventHotKey(
-    keyCode,
-    modifiers,
-    gHotKeyID,
-    GetApplicationEventTarget(),
-    0,
-    &hotKeyRef
-)
+// ---------------------------------------------------------------------------
+// Global hotkey monitor
+// ---------------------------------------------------------------------------
 
-guard status == noErr else {
-    fputs("error:failed to register hotkey (status \(status)). Check Accessibility permissions.\n", stderr)
-    print("error:failed to register hotkey")
-    fflush(stdout)
-    exit(1)
+NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+    let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    if event.keyCode == targetKeyCode && mods.contains(targetModifiers) {
+        // Write trigger file
+        FileManager.default.createFile(atPath: triggerPath, contents: nil, attributes: nil)
+        print("triggered")
+        fflush(stdout)
+    }
 }
-
-// ---------------------------------------------------------------------------
-// Event handler
-// ---------------------------------------------------------------------------
-
-var eventHandler: EventHandlerRef?
-
-let handler: EventHandlerUPP = { _, event, _ -> OSStatus in
-    // Write trigger file
-    let path = triggerPath
-    FileManager.default.createFile(atPath: path, contents: nil, attributes: nil)
-    print("triggered")
-    fflush(stdout)
-    return noErr
-}
-
-var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-InstallEventHandler(
-    GetApplicationEventTarget(),
-    handler,
-    1,
-    &eventType,
-    nil,
-    &eventHandler
-)
 
 // ---------------------------------------------------------------------------
 // Signal handling for clean shutdown
 // ---------------------------------------------------------------------------
 
-var running = true
-
-func handleStop(_: Int32) {
-    running = false
-    CFRunLoopStop(CFRunLoopGetMain())
+let sigSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+sigSrc.setEventHandler {
+    app.terminate(nil)
 }
+sigSrc.resume()
+signal(SIGINT, SIG_IGN)
 
-signal(SIGINT, handleStop)
-signal(SIGTERM, handleStop)
+let sigTermSrc = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+sigTermSrc.setEventHandler {
+    app.terminate(nil)
+}
+sigTermSrc.resume()
+signal(SIGTERM, SIG_IGN)
 
 // ---------------------------------------------------------------------------
 // Ready
@@ -173,7 +164,5 @@ signal(SIGTERM, handleStop)
 print("ready")
 fflush(stdout)
 
-// Run the event loop (CFRunLoop is the modern replacement for RunApplicationEventLoop)
-while running {
-    CFRunLoopRunInMode(.defaultMode, 0.5, true)
-}
+// Run the Cocoa event loop
+app.run()
