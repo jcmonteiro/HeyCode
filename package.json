@@ -3,15 +3,22 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "speechctl": "bin/speechctl.js"
+    "speechctl": "bin/speechctl.ts"
   },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "speechctl": "node bin/speechctl.js",
-    "speech": "node bin/speechctl.js record"
+    "typecheck": "tsc --noEmit",
+    "speechctl": "tsx bin/speechctl.ts",
+    "speech": "tsx bin/speechctl.ts record"
   },
-  "keywords": ["speech", "whisper", "transcription", "macos", "opencode"],
+  "keywords": [
+    "speech",
+    "whisper",
+    "transcription",
+    "macos",
+    "opencode"
+  ],
   "license": "ISC",
   "description": "macOS speech-to-text CLI powered by whisper.cpp, with an OpenCode plugin",
   "dependencies": {
@@ -19,6 +26,9 @@
     "execa": "^9.6.1"
   },
   "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
 }

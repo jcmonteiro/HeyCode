@@ -3,6 +3,9 @@ node_modules/
 *.log
 .opencode/node_modules/
 
+# TypeScript build output
+dist/
+
 # Compiled native binaries (rebuild with swiftc)
 # swiftc scripts/record.swift -o scripts/record -framework AVFoundation -framework Foundation
 # swiftc scripts/hotkey.swift -o scripts/hotkey -framework Cocoa -framework Carbon
