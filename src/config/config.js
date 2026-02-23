@@ -24,7 +24,7 @@ export const defaultConfig = {
     },
     vad: {
       enabled: true,
-      silenceDuration: 2.0,   // seconds of silence before auto-stop
+      silenceDuration: 1.0,   // seconds of silence before auto-stop
       silenceThreshold: -40,  // dB threshold (more negative = more sensitive)
       gracePeriod: 1.0,       // seconds before VAD activates (avoid false triggers)
     },

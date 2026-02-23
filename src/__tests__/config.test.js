@@ -39,7 +39,7 @@ describe("config", () => {
 
     expect(config.provider.type).toBe("whisper.cpp")
     expect(config.capture.vad.enabled).toBe(true)
-    expect(config.capture.vad.silenceDuration).toBe(2.0)
+    expect(config.capture.vad.silenceDuration).toBe(1.0)
   })
 
   it("merges file config over defaults", async () => {
