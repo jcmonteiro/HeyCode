@@ -1,15 +1,16 @@
-# OpenCode Speech Plugin
+# speechctl
 
-Speech-to-text for [OpenCode](https://opencode.ai): record from your macOS microphone, transcribe locally with [whisper.cpp](https://github.com/ggerganov/whisper.cpp), and append the transcript to your current prompt.
+A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Records from your microphone via a native AVFoundation Swift binary, transcribes locally, and returns the text. Also ships an [OpenCode](https://opencode.ai) plugin for hands-free coding.
 
 ## Features
 
-- **VAD auto-stop**: Recording auto-stops on silence (configurable threshold and duration)
-- **Toggle mode**: Manually start/stop recording with `/speech` or the `speech_record` tool
-- **Push-to-talk hotkey**: Global hotkey daemon (Cmd+Shift+Space) for hands-free recording
+- **VAD auto-stop**: Recording stops automatically on silence (configurable threshold and duration)
+- **Toggle mode**: Manually start/stop recording when VAD is disabled
+- **Push-to-talk hotkey**: Global hotkey daemon (Cmd+Shift+Space) for continuous hands-free use
 - **Streaming transcription**: Real-time feedback via `whisper-stream`
-- **Dual interface**: `/speech` slash command + `speech_record` tool for LLM-initiated recording
-- **Clean architecture**: Hexagonal (ports & adapters) with full test coverage
+- **Multiple providers**: Local whisper.cpp (default) or OpenAI Whisper API
+- **OpenCode plugin**: `/speech` command and `speech_record` tool for AI-assisted coding
+- **Clean architecture**: Hexagonal (ports & adapters) with 107 tests
 
 ## Prerequisites
 
@@ -18,7 +19,7 @@ Speech-to-text for [OpenCode](https://opencode.ai): record from your macOS micro
 | Node.js >= 18 | `brew install node` |
 | whisper.cpp | `brew install whisper-cpp` |
 | Whisper model | See [Model setup](#model-setup) below |
-| macOS (for native recorder) | Built-in AVFoundation, no extra install |
+| macOS | Built-in AVFoundation, no extra install |
 
 ### Model setup
 
@@ -47,23 +48,107 @@ For the hotkey daemon (optional, for push-to-talk):
 swiftc scripts/hotkey.swift -o scripts/hotkey -framework Carbon
 ```
 
-## Quick start
+## Install
 
 ```bash
+git clone <this-repo>
+cd speechctl
 npm install
-
-# Install plugin dependencies
-cd .opencode && npm install && cd ..
-
-# Run tests
-npm test
 ```
 
-## Usage in OpenCode
+### Link the CLI globally (optional)
 
-The plugin is auto-discovered from `.opencode/plugins/speech-plugin.js`.
+```bash
+npm link
+# Now `speechctl` is available system-wide
+```
 
-### /speech command
+## CLI usage
+
+```bash
+# Record with VAD auto-stop and transcribe
+speechctl record --listen
+speechctl record --listen --json
+
+# Toggle recording (start/stop manually)
+speechctl record
+speechctl record          # call again to stop and transcribe
+
+# Check recording status
+speechctl record --status
+
+# Transcribe an existing audio file
+speechctl transcribe /path/to/audio.wav
+speechctl transcribe --json /path/to/audio.wav
+
+# Real-time streaming transcription
+speechctl stream
+
+# Push-to-talk hotkey daemon
+speechctl daemon
+speechctl daemon --key space --modifiers cmd,shift --clipboard
+```
+
+If you haven't linked the CLI, use `node bin/speechctl.js` instead of `speechctl`.
+
+## OpenCode plugin
+
+The repo also provides an OpenCode plugin that exposes speechctl's capabilities inside OpenCode as a `/speech` slash command and a `speech_record` tool the LLM can invoke.
+
+### Plugin installation
+
+The plugin must be installed in OpenCode's **global** config directory (`~/.config/opencode/`), not in a project-local `.opencode/` folder. Three things need to happen:
+
+#### 1. Copy the plugin file
+
+```bash
+mkdir -p ~/.config/opencode/plugins
+cp .opencode/plugins/speech-plugin.js ~/.config/opencode/plugins/
+```
+
+The plugin uses absolute imports back into the speechctl repo, so the repo must stay in place (or you can update `projectRoot` in the plugin file).
+
+#### 2. Add plugin dependencies
+
+The plugin needs `@opencode-ai/sdk`, `@opencode-ai/plugin`, and `execa` in the global OpenCode `package.json`. Merge these into `~/.config/opencode/package.json`:
+
+```jsonc
+// ~/.config/opencode/package.json
+{
+  "type": "module",
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.10",
+    "@opencode-ai/sdk": "^1.2.10",
+    "execa": "^9.6.1"
+  }
+}
+```
+
+Then install:
+
+```bash
+cd ~/.config/opencode && npm install
+```
+
+#### 3. Register the `/speech` command
+
+Add the `speech` command to `~/.config/opencode/opencode.json`:
+
+```jsonc
+{
+  // ... existing config ...
+  "command": {
+    "speech": {
+      "template": "",
+      "description": "Toggle speech recording or transcribe an audio file"
+    }
+  }
+}
+```
+
+### Using the plugin
+
+#### /speech command
 
 ```
 /speech              # VAD mode: start recording, auto-stops on silence
@@ -71,36 +156,11 @@ The plugin is auto-discovered from `.opencode/plugins/speech-plugin.js`.
 /speech path/to.wav  # Transcribe a file directly
 ```
 
-With VAD enabled (default), a single `/speech` starts recording and auto-stops when you stop speaking. Without VAD, `/speech` toggles: first call starts, second call stops and transcribes.
+With VAD enabled (default), a single `/speech` starts recording and auto-stops when you stop speaking. The transcript becomes the user message sent to the LLM. Without VAD, `/speech` toggles: first call starts, second call stops and transcribes.
 
-### speech_record tool
+#### speech_record tool
 
-The LLM can invoke the `speech_record` tool to record and transcribe on your behalf.
-
-## CLI
-
-```bash
-# Toggle recording (start/stop)
-node bin/speechctl.js record
-
-# Check recording status
-node bin/speechctl.js record --status
-
-# Record with VAD auto-stop and transcribe
-node bin/speechctl.js record --listen
-node bin/speechctl.js record --listen --json
-
-# Transcribe a file
-node bin/speechctl.js transcribe /path/to/audio.wav
-node bin/speechctl.js transcribe --json /path/to/audio.wav
-
-# Real-time streaming transcription
-node bin/speechctl.js stream
-
-# Push-to-talk hotkey daemon
-node bin/speechctl.js daemon
-node bin/speechctl.js daemon --key space --modifiers cmd,shift --clipboard
-```
+The LLM can invoke the `speech_record` tool to record and transcribe on your behalf. This enables voice-driven workflows where the AI asks you to speak.
 
 ## Configuration
 
@@ -114,7 +174,7 @@ Create `~/.config/speechd/config.json` to override defaults:
     },
     "vad": {
       "enabled": true,
-      "silenceDuration": 2.0,
+      "silenceDuration": 1.0,
       "silenceThreshold": -40,
       "gracePeriod": 1.0
     },
@@ -173,13 +233,13 @@ Create `~/.config/speechd/config.json` to override defaults:
 | `SPEECHD_STREAMING_STEP_MS` | Streaming step interval (ms) |
 | `SPEECHD_STREAMING_LENGTH_MS` | Streaming audio length (ms) |
 
-### Configuration keys
+### Configuration reference
 
 | Key | Default | Description |
 |---|---|---|
 | `capture.native.bin` | `scripts/record` | Path to the compiled Swift recorder binary |
 | `capture.vad.enabled` | `true` | Enable VAD silence-based auto-stop |
-| `capture.vad.silenceDuration` | `2.0` | Seconds of silence before auto-stop |
+| `capture.vad.silenceDuration` | `1.0` | Seconds of silence before auto-stop |
 | `capture.vad.silenceThreshold` | `-40` | dB threshold (more negative = more sensitive) |
 | `capture.vad.gracePeriod` | `1.0` | Seconds before VAD activates (avoids false triggers) |
 | `capture.hotkey.key` | `space` | Global hotkey key |
@@ -202,7 +262,7 @@ Create `~/.config/speechd/config.json` to override defaults:
 
 ## Architecture
 
-Clean architecture with ports & adapters (hexagonal). Business logic has zero framework dependencies.
+Clean hexagonal architecture (ports & adapters). Business logic has zero framework dependencies.
 
 ```
 src/
@@ -220,7 +280,7 @@ src/
     toggle-recording.js       Start if idle, stop if active
     transcribe-file.js        Delegate to TranscriberPort
     record-and-transcribe.js  Unified record+transcribe (VAD & toggle modes)
-    start-and-wait-recording.js  VAD-only record → wait → transcribe
+    start-and-wait-recording.js  VAD-only record -> wait -> transcribe
 
   adapters/            Implementations of ports
     native-recorder.js          macOS AVFoundation via Swift binary
@@ -234,7 +294,7 @@ src/
     create-streaming-transcriber.js
 
   shells/              Integration orchestrators
-    hotkey-daemon.js     Global hotkey → record → transcribe daemon
+    hotkey-daemon.js     Global hotkey -> record -> transcribe daemon
 
   config/
     config.js            Config loading (file + env merge)
@@ -249,10 +309,6 @@ scripts/
   hotkey.swift         Native macOS global hotkey listener
   record               Compiled binary (gitignored)
   hotkey               Compiled binary (gitignored)
-
-.opencode/
-  plugins/
-    speech-plugin.js   OpenCode plugin (thin integration shell)
 ```
 
 ### Dependency rule
@@ -278,7 +334,7 @@ npm run test:watch    # Watch mode
 npx vitest run -t "test name"  # Single test
 ```
 
-Tests are organized by behavior:
+107 tests organized by behavior:
 
 | File | Tests | What it covers |
 |---|---|---|
@@ -290,7 +346,7 @@ Tests are organized by behavior:
 | `start-and-wait-recording.test.js` | 8 | VAD record use case, waitForStop guard |
 | `whisper-cpp-transcriber.test.js` | 8 | Arg construction, text normalization, error wrapping |
 | `openai-transcriber.test.js` | 7 | API calls, normalization, error wrapping |
-| `native-recorder.test.js` | 10 | State persistence, start/stop, VAD flags |
+| `native-recorder.test.js` | 12 | State persistence, start/stop, VAD flags |
 | `streaming-transcriber.test.js` | 13 | Port guard, args, onPartial, stop, isActive |
 | `config.test.js` | 8 | Config loading, merging, env override |
 | `factories.test.js` | 11 | Recorder, transcriber, streaming factory wiring |

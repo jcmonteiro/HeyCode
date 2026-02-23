@@ -3,6 +3,6 @@
   "dependencies": {
     "@opencode-ai/sdk": "^1.2.10",
     "execa": "^9.6.1",
-    "@opencode-ai/plugin": "1.2.4"
+    "@opencode-ai/plugin": "1.2.10"
   }
 }

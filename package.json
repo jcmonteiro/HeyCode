@@ -1,5 +1,5 @@
 {
-  "name": "opencode-speech-plugin",
+  "name": "speechctl",
   "version": "1.0.0",
   "type": "module",
   "bin": {
@@ -11,9 +11,9 @@
     "speechctl": "node bin/speechctl.js",
     "speech": "node bin/speechctl.js record"
   },
-  "keywords": ["opencode", "speech", "whisper", "transcription"],
+  "keywords": ["speech", "whisper", "transcription", "macos", "opencode"],
   "license": "ISC",
-  "description": "OpenCode speech-to-text plugin: macOS microphone recording + whisper.cpp transcription",
+  "description": "macOS speech-to-text CLI powered by whisper.cpp, with an OpenCode plugin",
   "dependencies": {
     "commander": "^14.0.3",
     "execa": "^9.6.1"
