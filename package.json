@@ -6,6 +6,7 @@
     "heycode": "bin/heycode.ts"
   },
   "scripts": {
+    "build": "swiftc -O -o scripts/record scripts/record.swift -framework AVFoundation && swiftc -O -o scripts/hotkey scripts/hotkey.swift && tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
