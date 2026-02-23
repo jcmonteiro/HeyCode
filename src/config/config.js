@@ -23,7 +23,12 @@ export const defaultConfig = {
     port: 7331,
   },
   capture: {
-    tool: "afrecord",
+    tool: "native",
+    native: {
+      bin: undefined, // auto-resolved to scripts/record
+      device: undefined,
+    },
+    // Legacy afrecord config kept for reference
     afrecord: {
       bin: "afrecord",
       format: "cd",
@@ -35,7 +40,7 @@ export const defaultConfig = {
     type: "whisper.cpp",
     whisperCpp: {
       bin: "whisper-cli",
-      model: "/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin",
+      model: path.join(os.homedir(), ".local", "share", "whisper-cpp", "models", "ggml-tiny.en.bin"),
       language: "auto",
       threads: undefined,
       extraArgs: [],

@@ -1,5 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "command": {
+    "speech": {
+      "template": "",
+      "description": "Toggle speech recording or transcribe an audio file"
+    }
+  },
   "permission": {
     "bash": {
       "pnpm *": "allow",

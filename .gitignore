@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 *.log
 .opencode/node_modules/
+
+# Compiled native binaries (rebuild with: swiftc scripts/record.swift -o scripts/record)
+scripts/record
