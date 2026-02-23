@@ -1,17 +1,18 @@
 /**
- * Hotkey daemon adapter.
+ * Hotkey daemon shell.
  *
- * Spawns the native macOS hotkey binary and watches for trigger events.
- * When a hotkey is pressed, it orchestrates the record → transcribe pipeline.
+ * Spawns the native macOS hotkey binary and listens for trigger events.
+ * When a hotkey is pressed, delegates to the recordAndTranscribe use case.
  *
- * This adapter does NOT implement a port — it's a top-level orchestrator
- * that uses RecorderPort and TranscriberPort through use cases.
+ * This is NOT an adapter (does not implement a port). It's a top-level
+ * integration shell, like the plugin and CLI, that wires ports to use cases.
  */
 import { execa } from "execa"
 import path from "node:path"
 import os from "node:os"
 import fs from "node:fs/promises"
 import { fileURLToPath } from "node:url"
+import { recordAndTranscribe } from "../usecases/record-and-transcribe.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -29,11 +30,12 @@ const DEFAULT_TRIGGER_PATH = path.join(
  *   key?: string,
  *   modifiers?: string,
  *   triggerPath?: string,
+ *   vadEnabled?: boolean,
  *   onTranscript?: (text: string) => void,
  *   onError?: (err: Error) => void,
  *   onStatusChange?: (status: string) => void,
  * }} opts
- * @returns {{ stop: () => void }}
+ * @returns {{ ready: Promise<void>, stop: () => void }}
  */
 export function createHotkeyDaemon({
   recorder,
@@ -42,6 +44,7 @@ export function createHotkeyDaemon({
   key = "space",
   modifiers = "cmd,shift",
   triggerPath = DEFAULT_TRIGGER_PATH,
+  vadEnabled = false,
   onTranscript,
   onError,
   onStatusChange,
@@ -49,7 +52,6 @@ export function createHotkeyDaemon({
   const bin = hotkeyBin || path.resolve(__dirname, "../../scripts/hotkey")
   let stopped = false
   let child = null
-  let watcher = null
 
   const emit = (status) => onStatusChange?.(status)
 
@@ -62,42 +64,30 @@ export function createHotkeyDaemon({
         // already cleaned
       }
 
-      const status = await recorder.status()
+      emit("recording")
 
-      if (status) {
-        // Currently recording — stop it
-        emit("stopping")
-        const outputPath = await recorder.stop()
-        emit("transcribing")
+      const result = await recordAndTranscribe({
+        recorder,
+        transcriber,
+        vadEnabled,
+        onStarted: () => emit("recording"),
+        onStopped: () => emit("transcribing"),
+      })
 
-        const { transcribeFile } = await import("../usecases/transcribe-file.js")
-        const transcript = await transcribeFile({ transcriber, filePath: outputPath })
-
-        if (transcript.isEmpty) {
-          emit("idle")
-          onTranscript?.("")
-        } else {
-          emit("idle")
-          onTranscript?.(transcript.text)
-        }
-      } else {
-        // Not recording — start
-        emit("recording")
-        await recorder.start()
-
-        // If VAD is enabled (recorder has waitForStop), use auto-stop flow
-        if (typeof recorder.waitForStop === "function") {
-          const outputPath = await recorder.waitForStop()
-          emit("transcribing")
-
-          const { transcribeFile } = await import("../usecases/transcribe-file.js")
-          const transcript = await transcribeFile({ transcriber, filePath: outputPath })
-
-          emit("idle")
-          onTranscript?.(transcript.isEmpty ? "" : transcript.text)
-        }
-        // Without VAD, user presses hotkey again to stop (handled by the if-branch above)
+      if (result.action === "started") {
+        // Toggle mode: recording started, user presses hotkey again to stop
+        return
       }
+
+      if (result.action === "cancelled") {
+        emit("idle")
+        onTranscript?.("")
+        return
+      }
+
+      // action === "stopped" — transcription complete
+      emit("idle")
+      onTranscript?.(result.transcript.isEmpty ? "" : result.transcript.text)
     } catch (err) {
       emit("error")
       onError?.(err)
@@ -167,9 +157,6 @@ export function createHotkeyDaemon({
         } catch {
           // already gone
         }
-      }
-      if (watcher) {
-        watcher.close()
       }
       emit("stopped")
     },
