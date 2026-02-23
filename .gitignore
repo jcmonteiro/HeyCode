@@ -3,5 +3,8 @@ node_modules/
 *.log
 .opencode/node_modules/
 
-# Compiled native binaries (rebuild with: swiftc scripts/record.swift -o scripts/record)
+# Compiled native binaries (rebuild with swiftc)
+# swiftc scripts/record.swift -o scripts/record -framework AVFoundation -framework Foundation
+# swiftc scripts/hotkey.swift -o scripts/hotkey -framework Cocoa -framework Carbon
 scripts/record
+scripts/hotkey
