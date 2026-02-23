@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
 
-export interface HeycodeConfig {
+export interface HeyCodeConfig {
   capture: {
     native: {
       bin?: string
@@ -58,7 +58,7 @@ const resolveConfigPath = (): string => {
   return path.join(base, "heycode", "config.json")
 }
 
-export const defaultConfig: HeycodeConfig = {
+export const defaultConfig: HeyCodeConfig = {
   capture: {
     native: {
       bin: undefined,
@@ -99,7 +99,7 @@ export const defaultConfig: HeycodeConfig = {
   },
 }
 
-export const loadConfig = async (): Promise<HeycodeConfig> => {
+export const loadConfig = async (): Promise<HeyCodeConfig> => {
   const configPath = resolveConfigPath()
   let fileConfig: Record<string, unknown> = {}
 
@@ -169,7 +169,7 @@ export const loadConfig = async (): Promise<HeycodeConfig> => {
     },
   }
 
-  return mergeConfig(defaultConfig, fileConfig, envConfig) as HeycodeConfig
+  return mergeConfig(defaultConfig, fileConfig, envConfig) as HeyCodeConfig
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

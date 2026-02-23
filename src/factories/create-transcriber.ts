@@ -4,9 +4,9 @@
 import { createWhisperCppTranscriber } from "../adapters/whisper-cpp-transcriber.js"
 import { createOpenAITranscriber } from "../adapters/openai-transcriber.js"
 import type { TranscriberPort } from "../ports/transcriber.js"
-import type { HeycodeConfig } from "../config/config.js"
+import type { HeyCodeConfig } from "../config/config.js"
 
-export function createTranscriber(config: HeycodeConfig): TranscriberPort {
+export function createTranscriber(config: HeyCodeConfig): TranscriberPort {
   const providerType = config.provider?.type
 
   if (providerType === "whisper.cpp") {

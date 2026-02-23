@@ -3,7 +3,7 @@ import { createTranscriber } from "../factories/create-transcriber.js"
 import { createRecorder } from "../factories/create-recorder.js"
 import { createStreamingTranscriber } from "../factories/create-streaming-transcriber.js"
 import { TranscriberConfigError } from "../domain/errors.js"
-import type { HeycodeConfig } from "../config/config.js"
+import type { HeyCodeConfig } from "../config/config.js"
 
 describe("createTranscriber", () => {
   it("creates a whisper.cpp transcriber from config", () => {
@@ -12,7 +12,7 @@ describe("createTranscriber", () => {
         type: "whisper.cpp",
         whisperCpp: { bin: "whisper-cli", model: "/m", language: "auto" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const t = createTranscriber(config)
     expect(typeof t.transcribe).toBe("function")
   })
@@ -23,13 +23,13 @@ describe("createTranscriber", () => {
         type: "openai",
         openai: { apiKey: "sk-test", model: "whisper-1" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const t = createTranscriber(config)
     expect(typeof t.transcribe).toBe("function")
   })
 
   it("throws for unknown provider type", () => {
-    const config = { provider: { type: "unknown" } } as HeycodeConfig
+    const config = { provider: { type: "unknown" } } as HeyCodeConfig
     expect(() => createTranscriber(config)).toThrow(/unknown/)
   })
 
@@ -39,7 +39,7 @@ describe("createTranscriber", () => {
         type: "whisper.cpp",
         whisperCpp: { bin: "whisper-cli", model: "" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     expect(() => createTranscriber(config)).toThrow(TranscriberConfigError)
   })
 
@@ -49,7 +49,7 @@ describe("createTranscriber", () => {
         type: "openai",
         openai: { apiKey: "" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     expect(() => createTranscriber(config)).toThrow(TranscriberConfigError)
   })
 })
@@ -61,7 +61,7 @@ describe("createRecorder", () => {
         native: { bin: "/path/to/record" },
         vad: { enabled: true },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const recorder = createRecorder(config)
     expect(typeof recorder.start).toBe("function")
     expect(typeof recorder.stop).toBe("function")
@@ -74,13 +74,13 @@ describe("createRecorder", () => {
         native: { bin: "/path/to/record" },
         vad: { enabled: true },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const recorder = createRecorder(config)
     expect(typeof recorder.waitForStop).toBe("function")
   })
 
   it("falls back to default bin path when not specified", () => {
-    const config = { capture: { native: {} } } as HeycodeConfig
+    const config = { capture: { native: {} } } as HeyCodeConfig
     const recorder = createRecorder(config)
     // Should not throw — just uses default path
     expect(typeof recorder.start).toBe("function")
@@ -94,7 +94,7 @@ describe("createStreamingTranscriber", () => {
         whisperCpp: { model: "/m" },
         streaming: { bin: "whisper-stream" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const streamer = createStreamingTranscriber(config)
     expect(typeof streamer.start).toBe("function")
     expect(typeof streamer.stop).toBe("function")
@@ -107,7 +107,7 @@ describe("createStreamingTranscriber", () => {
         whisperCpp: { model: "" },
         streaming: { bin: "whisper-stream" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     expect(() => createStreamingTranscriber(config)).toThrow(TranscriberConfigError)
   })
 
@@ -116,7 +116,7 @@ describe("createStreamingTranscriber", () => {
       provider: {
         whisperCpp: { model: "/m" },
       },
-    } as HeycodeConfig
+    } as HeyCodeConfig
     const streamer = createStreamingTranscriber(config)
     expect(streamer.isActive()).toBe(false)
   })
