@@ -37,11 +37,23 @@ describe("createNativeRecorder", () => {
     return child
   }
 
-  it("creates an object with start, stop, status, and waitForStop methods", () => {
+  it("creates an object with start, stop, and status methods", () => {
     const recorder = createNativeRecorder({ binPath: "/path/to/record" })
     expect(typeof recorder.start).toBe("function")
     expect(typeof recorder.stop).toBe("function")
     expect(typeof recorder.status).toBe("function")
+  })
+
+  it("does not expose waitForStop when VAD is disabled", () => {
+    const recorder = createNativeRecorder({ binPath: "/path/to/record" })
+    expect(recorder.waitForStop).toBeUndefined()
+  })
+
+  it("exposes waitForStop when VAD is enabled", () => {
+    const recorder = createNativeRecorder({
+      binPath: "/path/to/record",
+      vad: { enabled: true },
+    })
     expect(typeof recorder.waitForStop).toBe("function")
   })
 

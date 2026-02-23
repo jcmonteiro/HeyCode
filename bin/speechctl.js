@@ -18,6 +18,7 @@ import { createTranscriber } from "../src/factories/create-transcriber.js"
 import { toggleRecording } from "../src/usecases/toggle-recording.js"
 import { recordAndTranscribe } from "../src/usecases/record-and-transcribe.js"
 import { transcribeFile } from "../src/usecases/transcribe-file.js"
+import { supportsWaitForStop } from "../src/ports/recorder.js"
 
 const program = new Command()
 
@@ -65,6 +66,15 @@ program
 
     // --listen: record → auto-stop on silence → transcribe → print
     if (options.listen) {
+      if (!supportsWaitForStop(recorder)) {
+        process.stderr.write(
+          "Warning: VAD is not enabled in config. --listen requires VAD to auto-stop on silence.\n" +
+          "Enable it in speechd.config.json: { \"capture\": { \"vad\": { \"enabled\": true } } }\n",
+        )
+        process.exitCode = 1
+        return
+      }
+
       const transcriber = createTranscriber(config)
 
       const result = await recordAndTranscribe({

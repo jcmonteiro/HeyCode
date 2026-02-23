@@ -89,7 +89,8 @@ export function createNativeRecorder({ binPath, cacheDir, vad }) {
   const stateOpts = { cacheDir }
   const vadEnabled = vad?.enabled ?? false
 
-  return {
+  /** @type {import('../ports/recorder.js').RecorderPort} */
+  const recorder = {
     async start() {
       const existing = await readState(stateOpts)
       if (existing?.pid && isAlive(existing.pid)) {
@@ -177,9 +178,14 @@ export function createNativeRecorder({ binPath, cacheDir, vad }) {
 
       return new Recording({ pid: existing.pid, outputPath: existing.outputPath })
     },
+  }
 
-    async waitForStop() {
-      // Poll until the recording process exits (auto-stop via VAD or manual stop)
+  // Only expose waitForStop when VAD is enabled — the Swift binary
+  // must have --vad flags to auto-stop on silence. Without them,
+  // waitForStop would poll forever on a process that never exits.
+  if (vadEnabled) {
+    recorder.waitForStop = async () => {
+      // Poll until the recording process exits (auto-stop via VAD or signal)
       while (true) {
         const existing = await readState(stateOpts)
         if (!existing?.pid) {
@@ -187,7 +193,6 @@ export function createNativeRecorder({ binPath, cacheDir, vad }) {
         }
 
         if (!isAlive(existing.pid)) {
-          // Process exited (auto-stop via VAD or signal)
           const outputPath = existing.outputPath
           await clearState(stateOpts)
           return outputPath
@@ -195,6 +200,8 @@ export function createNativeRecorder({ binPath, cacheDir, vad }) {
 
         await new Promise((r) => setTimeout(r, WAIT_POLL_MS))
       }
-    },
+    }
   }
+
+  return recorder
 }

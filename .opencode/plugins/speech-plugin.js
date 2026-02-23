@@ -2,13 +2,15 @@
  * OpenCode Speech Plugin
  *
  * Thin integration shell that wires the speech domain into OpenCode:
- * - /speech command: records speech and transcribes to prompt
+ * - /speech command: records speech and transcribes it
  *   - With VAD: one /speech starts recording, auto-stops on silence, transcribes
  *   - Without VAD: /speech toggles start/stop, transcribes on stop
+ *   - The transcript replaces the command's text part so it becomes the
+ *     user message sent to the LLM.
  * - speech_record tool: allows the LLM to trigger recording on behalf of the user
  *
  * All business logic lives in src/usecases/.
- * This file only handles OpenCode-specific concerns (toasts, prompt appending).
+ * This file only handles OpenCode-specific concerns (toasts, command parts).
  *
  * Lives in .opencode/plugins/ to resolve @opencode-ai/plugin from .opencode/node_modules/.
  */
@@ -48,6 +50,35 @@ async function getDeps() {
 }
 
 // ---------------------------------------------------------------------------
+// Command output helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the first text part in the output.parts array.
+ * OpenCode pre-populates parts from the command template —
+ * we must modify existing parts, never replace the array, because
+ * the parts carry server-assigned ids (id, sessionID, messageID).
+ * Replacing the array with new objects lacking those fields causes
+ * a 400 "Bad request" error.
+ */
+const findTextPart = (parts) =>
+  parts.find((p) => p.type === "text")
+
+/**
+ * Rewrite the command's text part so the message carries the given content.
+ * If no text part exists, we push a minimal one (shouldn't happen with
+ * a well-configured template, but guards against edge cases).
+ */
+const setCommandText = (output, text) => {
+  const part = findTextPart(output.parts)
+  if (part) {
+    part.text = text
+  } else {
+    output.parts.push({ type: "text", text })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Toast helpers (never throw — TUI may not be ready)
 // ---------------------------------------------------------------------------
 
@@ -65,9 +96,14 @@ const toast = async (client, message, variant = "info") => {
 
 /**
  * Handle the result of recordAndTranscribe for the /speech command.
- * Appends transcript to prompt or shows appropriate toast.
+ * Returns the text to set on the command's message part.
  *
- * @returns {{ text?: string }} - text if transcript was produced
+ * - "started": recording has begun (toggle mode) — marker message
+ * - "cancelled": recording force-stopped — marker message
+ * - "stopped" + transcript: transcript text becomes the user message
+ * - "stopped" + empty: no speech detected — marker message
+ *
+ * @returns {Promise<string>} text for the command part
  */
 const handleResult = async (client, result) => {
   if (result.action === "started") {
@@ -77,23 +113,22 @@ const handleResult = async (client, result) => {
         ? "Recording... will auto-stop on silence"
         : "Recording... type /speech again to stop",
     )
-    return {}
+    return "[Recording started — say /speech again to stop and transcribe]"
   }
 
   if (result.action === "cancelled") {
     await toast(client, "Recording cancelled", "warning")
-    return {}
+    return "[Recording cancelled]"
   }
 
   // action === "stopped"
   if (result.transcript.isEmpty) {
     await toast(client, "No speech detected — try again", "warning")
-    return {}
+    return "[No speech detected]"
   }
 
-  await client.tui.appendPrompt({ body: { text: result.transcript.text } })
-  await toast(client, "Transcript appended to prompt", "success")
-  return { text: result.transcript.text }
+  await toast(client, "Transcript ready", "success")
+  return result.transcript.text
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +162,12 @@ const SpeechPlugin = async ({ client }) => {
           await toast(client, "Transcribing file...")
           const transcript = await transcribeFile({ transcriber, filePath: args })
           if (transcript.isEmpty) {
+            setCommandText(output, "[No speech detected in file]")
             await toast(client, "No speech detected in file", "warning")
           } else {
-            await client.tui.appendPrompt({ body: { text: transcript.text } })
-            await toast(client, "Transcript appended to prompt", "success")
+            setCommandText(output, transcript.text)
+            await toast(client, "Transcript ready", "success")
           }
-          output.parts = []
           return
         }
 
@@ -146,11 +181,11 @@ const SpeechPlugin = async ({ client }) => {
           vadEnabled: _vadEnabled,
         })
 
-        await handleResult(client, result)
-        output.parts = []
+        const cmdText = await handleResult(client, result)
+        setCommandText(output, cmdText)
       } catch (err) {
         await toast(client, `Speech error: ${err.message || err}`, "error")
-        output.parts = []
+        setCommandText(output, `[Speech error: ${err.message || err}]`)
       }
     },
 
