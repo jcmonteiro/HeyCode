@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { assertRecorderPort } from "../ports/recorder.js"
+import { assertRecorderPort, supportsWaitForStop } from "../ports/recorder.js"
 import { assertTranscriberPort } from "../ports/transcriber.js"
 
 describe("assertRecorderPort", () => {
@@ -16,6 +16,22 @@ describe("assertRecorderPort", () => {
 
   it("rejects null", () => {
     expect(() => assertRecorderPort(null)).toThrow(TypeError)
+  })
+})
+
+describe("supportsWaitForStop", () => {
+  it("returns true when waitForStop is a function", () => {
+    const port = { start: () => {}, stop: () => {}, status: () => {}, waitForStop: () => {} }
+    expect(supportsWaitForStop(port)).toBe(true)
+  })
+
+  it("returns false when waitForStop is missing", () => {
+    const port = { start: () => {}, stop: () => {}, status: () => {} }
+    expect(supportsWaitForStop(port)).toBe(false)
+  })
+
+  it("returns false for null", () => {
+    expect(supportsWaitForStop(null)).toBe(false)
   })
 })
 

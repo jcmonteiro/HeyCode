@@ -8,6 +8,7 @@
  * @property {() => Promise<string>}           start  - Begin recording. Returns the output file path. Throws RecordingAlreadyActiveError if already recording.
  * @property {() => Promise<string>}           stop   - Stop recording. Returns the output file path. Throws NoActiveRecordingError if idle.
  * @property {() => Promise<import('../domain/recording.js').Recording | null>} status - Current recording state, or null if idle.
+ * @property {() => Promise<string>}           [waitForStop] - Wait for the recorder to stop (auto-stop via VAD or manual). Returns the output file path. Optional — only available when the adapter supports VAD.
  */
 
 /**
@@ -23,4 +24,14 @@ export function assertRecorderPort(obj) {
       throw new TypeError(`RecorderPort requires method "${method}"`)
     }
   }
+}
+
+/**
+ * Check whether a recorder supports the waitForStop capability (VAD auto-stop).
+ *
+ * @param {RecorderPort} recorder
+ * @returns {boolean}
+ */
+export function supportsWaitForStop(recorder) {
+  return typeof recorder?.waitForStop === "function"
 }

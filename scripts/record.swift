@@ -1,18 +1,48 @@
 #!/usr/bin/env swift
 // Minimal macOS microphone recorder using AVFoundation.
-// Usage: record <output.wav>
-// Stops on SIGINT (Ctrl-C) or SIGTERM, flushes the file, and exits 0.
+//
+// Usage:
+//   record <output.wav>                             # manual stop only
+//   record <output.wav> --vad                       # auto-stop on silence (defaults)
+//   record <output.wav> --vad --silence-duration 2.0 --silence-threshold -40
+//
+// Stops on SIGINT (Ctrl-C), SIGTERM, or (when --vad is enabled) after
+// sustained silence. Flushes the file and exits 0.
+//
+// Stdout protocol:
+//   recording:<path>   — emitted when recording starts
+//   stopped:<path>     — emitted when recording stops (manual or auto)
 
 import AVFoundation
 import Foundation
 
-guard CommandLine.arguments.count == 2 else {
-    fputs("usage: record <output.wav>\n", stderr)
+// ---------------------------------------------------------------------------
+// Argument parsing
+// ---------------------------------------------------------------------------
+
+let args = CommandLine.arguments
+guard args.count >= 2 else {
+    fputs("usage: record <output.wav> [--vad] [--silence-duration N] [--silence-threshold N]\n", stderr)
     exit(1)
 }
 
-let outputPath = CommandLine.arguments[1]
+let outputPath = args[1]
 let outputURL = URL(fileURLWithPath: outputPath)
+
+func argValue(_ flag: String) -> String? {
+    guard let idx = args.firstIndex(of: flag), idx + 1 < args.count else { return nil }
+    return args[idx + 1]
+}
+
+let vadEnabled = args.contains("--vad")
+let silenceDuration = Double(argValue("--silence-duration") ?? "2.0") ?? 2.0
+let silenceThreshold = Float(argValue("--silence-threshold") ?? "-40") ?? -40.0
+// Grace period: don't trigger VAD auto-stop during the first N seconds
+let vadGracePeriod = Double(argValue("--vad-grace") ?? "1.0") ?? 1.0
+
+// ---------------------------------------------------------------------------
+// Recorder setup
+// ---------------------------------------------------------------------------
 
 // whisper-cli requires 16kHz mono 16-bit PCM WAV
 let settings: [String: Any] = [
@@ -27,6 +57,7 @@ let settings: [String: Any] = [
 let recorder: AVAudioRecorder
 do {
     recorder = try AVAudioRecorder(url: outputURL, settings: settings)
+    recorder.isMeteringEnabled = vadEnabled
     recorder.prepareToRecord()
 } catch {
     fputs("error: \(error.localizedDescription)\n", stderr)
@@ -55,13 +86,43 @@ guard recorder.record() else {
 print("recording:\(outputPath)")
 fflush(stdout)
 
-// Poll for stop signal OR stop-marker file
+// ---------------------------------------------------------------------------
+// Poll loop: stop signal / stop-marker / VAD silence detection
+// ---------------------------------------------------------------------------
+
+let startTime = Date()
+var silentSince: Date? = nil
+
 while running {
-    // Also check for a stop-marker file (used by the Node.js process)
+    // Check for stop-marker file (used by the Node.js process)
     if FileManager.default.fileExists(atPath: stopMarker.path) {
         try? FileManager.default.removeItem(at: stopMarker)
         break
     }
+
+    // VAD silence detection (only after grace period)
+    if vadEnabled {
+        let elapsed = Date().timeIntervalSince(startTime)
+        if elapsed >= vadGracePeriod {
+            recorder.updateMeters()
+            let power = recorder.averagePower(forChannel: 0)
+
+            if power < silenceThreshold {
+                // Below threshold — track silence start
+                if silentSince == nil {
+                    silentSince = Date()
+                } else if let start = silentSince,
+                          Date().timeIntervalSince(start) >= silenceDuration {
+                    // Sustained silence — auto-stop
+                    break
+                }
+            } else {
+                // Speech detected — reset silence tracker
+                silentSince = nil
+            }
+        }
+    }
+
     Thread.sleep(forTimeInterval: 0.1)
 }
 

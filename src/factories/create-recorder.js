@@ -16,5 +16,6 @@ const defaultBinPath = () => path.resolve(__dirname, "../../scripts/record")
  */
 export function createRecorder(config) {
   const binPath = config.capture?.native?.bin || defaultBinPath()
-  return createNativeRecorder({ binPath })
+  const vad = config.capture?.vad
+  return createNativeRecorder({ binPath, vad })
 }

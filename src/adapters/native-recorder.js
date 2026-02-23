@@ -5,6 +5,10 @@
  * (scripts/record). Records 16kHz mono 16-bit PCM WAV files suitable
  * for whisper-cli.
  *
+ * When VAD is enabled, the recorder passes --vad flags to the Swift binary
+ * which will auto-stop recording after sustained silence. The adapter
+ * exposes a waitForStop() method that resolves when the process exits.
+ *
  * Recording state is persisted to a JSON file in the cache directory
  * so that start and stop can happen in separate process invocations
  * (the recorder runs as a detached child process).
@@ -22,6 +26,7 @@ import {
 
 const START_TIMEOUT_MS = 5_000
 const STOP_FLUSH_MS = 500
+const WAIT_POLL_MS = 200
 
 // ---------------------------------------------------------------------------
 // State persistence (pid + outputPath in a JSON file)
@@ -73,11 +78,16 @@ const isAlive = (pid) => {
 /**
  * Create a NativeRecorder that satisfies RecorderPort.
  *
- * @param {{ binPath: string, cacheDir?: string }} opts
+ * @param {{
+ *   binPath: string,
+ *   cacheDir?: string,
+ *   vad?: { enabled?: boolean, silenceDuration?: number, silenceThreshold?: number, gracePeriod?: number },
+ * }} opts
  * @returns {import('../ports/recorder.js').RecorderPort}
  */
-export function createNativeRecorder({ binPath, cacheDir }) {
+export function createNativeRecorder({ binPath, cacheDir, vad }) {
   const stateOpts = { cacheDir }
+  const vadEnabled = vad?.enabled ?? false
 
   return {
     async start() {
@@ -92,7 +102,23 @@ export function createNativeRecorder({ binPath, cacheDir }) {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), "speechd-audio-"))
       const outputPath = path.join(dir, `recording-${Date.now()}.wav`)
 
-      const child = execa(binPath, [outputPath], {
+      const binArgs = [outputPath]
+
+      // Pass VAD flags to the Swift binary
+      if (vadEnabled) {
+        binArgs.push("--vad")
+        if (vad?.silenceDuration !== undefined) {
+          binArgs.push("--silence-duration", String(vad.silenceDuration))
+        }
+        if (vad?.silenceThreshold !== undefined) {
+          binArgs.push("--silence-threshold", String(vad.silenceThreshold))
+        }
+        if (vad?.gracePeriod !== undefined) {
+          binArgs.push("--vad-grace", String(vad.gracePeriod))
+        }
+      }
+
+      const child = execa(binPath, binArgs, {
         stdout: "pipe",
         stderr: "pipe",
         detached: true,
@@ -150,6 +176,25 @@ export function createNativeRecorder({ binPath, cacheDir }) {
       }
 
       return new Recording({ pid: existing.pid, outputPath: existing.outputPath })
+    },
+
+    async waitForStop() {
+      // Poll until the recording process exits (auto-stop via VAD or manual stop)
+      while (true) {
+        const existing = await readState(stateOpts)
+        if (!existing?.pid) {
+          throw new NoActiveRecordingError()
+        }
+
+        if (!isAlive(existing.pid)) {
+          // Process exited (auto-stop via VAD or signal)
+          const outputPath = existing.outputPath
+          await clearState(stateOpts)
+          return outputPath
+        }
+
+        await new Promise((r) => setTimeout(r, WAIT_POLL_MS))
+      }
     },
   }
 }
