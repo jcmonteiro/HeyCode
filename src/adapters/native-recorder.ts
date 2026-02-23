@@ -44,7 +44,7 @@ interface RecordingState {
 
 const statePath = (opts?: StateOpts): string => {
   const base = opts?.cacheDir ?? process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache")
-  return path.join(base, "speechd", "recording.json")
+  return path.join(base, "heycode", "recording.json")
 }
 
 const readState = async (opts?: StateOpts): Promise<RecordingState | null> => {
@@ -112,7 +112,7 @@ export function createNativeRecorder({ binPath, cacheDir, vad }: NativeRecorderO
       // Clean stale state from a dead process
       if (existing) await clearState(stateOpts)
 
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "speechd-audio-"))
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "heycode-audio-"))
       const outputPath = path.join(dir, `recording-${Date.now()}.wav`)
 
       const binArgs: string[] = [outputPath]

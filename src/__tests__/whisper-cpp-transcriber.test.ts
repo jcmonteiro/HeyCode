@@ -41,7 +41,7 @@ describe("whisper-cpp transcribe", () => {
     // Mock fs.access to succeed and fs.readFile to return transcript text
     vi.spyOn(fs, "access").mockResolvedValue(undefined)
     vi.spyOn(fs, "readFile").mockResolvedValue("  hello   world  \n")
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-mock")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-mock")
 
     const t = createWhisperCppTranscriber({ bin: "whisper-cli", model: "/models/tiny.bin" })
     const result = await t.transcribe("/tmp/audio.wav")
@@ -62,7 +62,7 @@ describe("whisper-cpp transcribe", () => {
     execaMock.mockResolvedValue({ stdout: "", stderr: "" })
     vi.spyOn(fs, "access").mockResolvedValue(undefined)
     vi.spyOn(fs, "readFile").mockResolvedValue("text")
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-mock")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-mock")
 
     const t = createWhisperCppTranscriber({
       bin: "whisper-cli",
@@ -83,7 +83,7 @@ describe("whisper-cpp transcribe", () => {
     execaMock.mockResolvedValue({ stdout: "", stderr: "" })
     vi.spyOn(fs, "access").mockResolvedValue(undefined)
     vi.spyOn(fs, "readFile").mockResolvedValue("text")
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-mock")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-mock")
 
     const t = createWhisperCppTranscriber({
       bin: "whisper-cli",
@@ -101,7 +101,7 @@ describe("whisper-cpp transcribe", () => {
     execaMock.mockResolvedValue({ stdout: "", stderr: "" })
     vi.spyOn(fs, "access").mockResolvedValue(undefined)
     vi.spyOn(fs, "readFile").mockResolvedValue("text")
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-mock")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-mock")
 
     const t = createWhisperCppTranscriber({
       bin: "whisper-cli",
@@ -121,7 +121,7 @@ describe("whisper-cpp transcribe", () => {
     const { execa: execaMock } = await import("execa") as any
     execaMock.mockRejectedValue(new Error("signal 11"))
     vi.spyOn(fs, "access").mockResolvedValue(undefined)
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-mock")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-mock")
 
     const t = createWhisperCppTranscriber({ bin: "whisper-cli", model: "/m" })
     await expect(t.transcribe("/tmp/audio.wav")).rejects.toThrow(TranscriptionFailedError)

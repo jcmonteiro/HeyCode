@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * speechctl — CLI for the speech-to-text system.
+ * heycode — CLI for the speech-to-text system.
  *
  * Thin shell: loads config, wires factories, delegates to use cases.
  *
@@ -23,7 +23,7 @@ import { supportsWaitForStop } from "../src/ports/recorder.js"
 const program = new Command()
 
 program
-  .name("speechctl")
+  .name("heycode")
   .description("Speech-to-text CLI")
   .version("1.0.0")
 
@@ -69,7 +69,7 @@ program
       if (!supportsWaitForStop(recorder)) {
         process.stderr.write(
           "Warning: VAD is not enabled in config. --listen requires VAD to auto-stop on silence.\n" +
-          "Enable it in speechd.config.json: { \"capture\": { \"vad\": { \"enabled\": true } } }\n",
+          "Enable it in config.json: { \"capture\": { \"vad\": { \"enabled\": true } } }\n",
         )
         process.exitCode = 1
         return

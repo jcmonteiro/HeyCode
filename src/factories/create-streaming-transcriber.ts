@@ -3,9 +3,9 @@
  */
 import { createWhisperStreamTranscriber } from "../adapters/whisper-stream-transcriber.js"
 import type { StreamingTranscriberPort } from "../ports/streaming-transcriber.js"
-import type { SpeechdConfig } from "../config/config.js"
+import type { HeycodeConfig } from "../config/config.js"
 
-export function createStreamingTranscriber(config: SpeechdConfig): StreamingTranscriberPort {
+export function createStreamingTranscriber(config: HeycodeConfig): StreamingTranscriberPort {
   const w = config.provider?.whisperCpp ?? { model: "", bin: "whisper-cli", language: "auto", extraArgs: [] }
   return createWhisperStreamTranscriber({
     bin: config.provider?.streaming?.bin ?? "whisper-stream",

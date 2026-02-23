@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
 
-export interface SpeechdConfig {
+export interface HeycodeConfig {
   capture: {
     native: {
       bin?: string
@@ -53,12 +53,12 @@ const parseJson = <T>(value: string | undefined, fallback: T): T => {
 }
 
 const resolveConfigPath = (): string => {
-  if (process.env.SPEECHD_CONFIG) return process.env.SPEECHD_CONFIG
+  if (process.env.HEYCODE_CONFIG) return process.env.HEYCODE_CONFIG
   const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config")
-  return path.join(base, "speechd", "config.json")
+  return path.join(base, "heycode", "config.json")
 }
 
-export const defaultConfig: SpeechdConfig = {
+export const defaultConfig: HeycodeConfig = {
   capture: {
     native: {
       bin: undefined,
@@ -99,7 +99,7 @@ export const defaultConfig: SpeechdConfig = {
   },
 }
 
-export const loadConfig = async (): Promise<SpeechdConfig> => {
+export const loadConfig = async (): Promise<HeycodeConfig> => {
   const configPath = resolveConfigPath()
   let fileConfig: Record<string, unknown> = {}
 
@@ -113,63 +113,63 @@ export const loadConfig = async (): Promise<SpeechdConfig> => {
   const envConfig = {
     capture: {
       native: {
-        bin: process.env.SPEECHD_RECORDER_BIN,
+        bin: process.env.HEYCODE_RECORDER_BIN,
       },
       vad: {
-        enabled: process.env.SPEECHD_VAD_ENABLED !== undefined
-          ? process.env.SPEECHD_VAD_ENABLED !== "false"
+        enabled: process.env.HEYCODE_VAD_ENABLED !== undefined
+          ? process.env.HEYCODE_VAD_ENABLED !== "false"
           : undefined,
-        silenceDuration: process.env.SPEECHD_VAD_SILENCE_DURATION
-          ? Number(process.env.SPEECHD_VAD_SILENCE_DURATION)
+        silenceDuration: process.env.HEYCODE_VAD_SILENCE_DURATION
+          ? Number(process.env.HEYCODE_VAD_SILENCE_DURATION)
           : undefined,
-        silenceThreshold: process.env.SPEECHD_VAD_SILENCE_THRESHOLD
-          ? Number(process.env.SPEECHD_VAD_SILENCE_THRESHOLD)
+        silenceThreshold: process.env.HEYCODE_VAD_SILENCE_THRESHOLD
+          ? Number(process.env.HEYCODE_VAD_SILENCE_THRESHOLD)
           : undefined,
-        gracePeriod: process.env.SPEECHD_VAD_GRACE_PERIOD
-          ? Number(process.env.SPEECHD_VAD_GRACE_PERIOD)
+        gracePeriod: process.env.HEYCODE_VAD_GRACE_PERIOD
+          ? Number(process.env.HEYCODE_VAD_GRACE_PERIOD)
           : undefined,
       },
       hotkey: {
-        key: process.env.SPEECHD_HOTKEY_KEY,
-        modifiers: process.env.SPEECHD_HOTKEY_MODIFIERS,
-        bin: process.env.SPEECHD_HOTKEY_BIN,
+        key: process.env.HEYCODE_HOTKEY_KEY,
+        modifiers: process.env.HEYCODE_HOTKEY_MODIFIERS,
+        bin: process.env.HEYCODE_HOTKEY_BIN,
       },
     },
     provider: {
-      type: process.env.SPEECHD_PROVIDER,
+      type: process.env.HEYCODE_PROVIDER,
       whisperCpp: {
-        bin: process.env.SPEECHD_WHISPER_BIN,
-        model: process.env.SPEECHD_WHISPER_MODEL,
-        language: process.env.SPEECHD_WHISPER_LANG,
-        threads: process.env.SPEECHD_WHISPER_THREADS
-          ? Number(process.env.SPEECHD_WHISPER_THREADS)
+        bin: process.env.HEYCODE_WHISPER_BIN,
+        model: process.env.HEYCODE_WHISPER_MODEL,
+        language: process.env.HEYCODE_WHISPER_LANG,
+        threads: process.env.HEYCODE_WHISPER_THREADS
+          ? Number(process.env.HEYCODE_WHISPER_THREADS)
           : undefined,
-        extraArgs: parseJson<string[] | undefined>(process.env.SPEECHD_WHISPER_EXTRA_ARGS, undefined),
+        extraArgs: parseJson<string[] | undefined>(process.env.HEYCODE_WHISPER_EXTRA_ARGS, undefined),
       },
       openai: {
-        apiKey: process.env.OPENAI_API_KEY || process.env.SPEECHD_OPENAI_KEY,
-        model: process.env.SPEECHD_OPENAI_MODEL,
-        language: process.env.SPEECHD_OPENAI_LANG,
+        apiKey: process.env.OPENAI_API_KEY || process.env.HEYCODE_OPENAI_KEY,
+        model: process.env.HEYCODE_OPENAI_MODEL,
+        language: process.env.HEYCODE_OPENAI_LANG,
       },
       streaming: {
-        bin: process.env.SPEECHD_STREAMING_BIN,
-        stepMs: process.env.SPEECHD_STREAMING_STEP_MS
-          ? Number(process.env.SPEECHD_STREAMING_STEP_MS)
+        bin: process.env.HEYCODE_STREAMING_BIN,
+        stepMs: process.env.HEYCODE_STREAMING_STEP_MS
+          ? Number(process.env.HEYCODE_STREAMING_STEP_MS)
           : undefined,
-        lengthMs: process.env.SPEECHD_STREAMING_LENGTH_MS
-          ? Number(process.env.SPEECHD_STREAMING_LENGTH_MS)
+        lengthMs: process.env.HEYCODE_STREAMING_LENGTH_MS
+          ? Number(process.env.HEYCODE_STREAMING_LENGTH_MS)
           : undefined,
-        captureDevice: process.env.SPEECHD_STREAMING_CAPTURE_DEVICE
-          ? Number(process.env.SPEECHD_STREAMING_CAPTURE_DEVICE)
+        captureDevice: process.env.HEYCODE_STREAMING_CAPTURE_DEVICE
+          ? Number(process.env.HEYCODE_STREAMING_CAPTURE_DEVICE)
           : undefined,
-        vadThreshold: process.env.SPEECHD_STREAMING_VAD_THRESHOLD
-          ? Number(process.env.SPEECHD_STREAMING_VAD_THRESHOLD)
+        vadThreshold: process.env.HEYCODE_STREAMING_VAD_THRESHOLD
+          ? Number(process.env.HEYCODE_STREAMING_VAD_THRESHOLD)
           : undefined,
       },
     },
   }
 
-  return mergeConfig(defaultConfig, fileConfig, envConfig) as SpeechdConfig
+  return mergeConfig(defaultConfig, fileConfig, envConfig) as HeycodeConfig
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

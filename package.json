@@ -1,16 +1,16 @@
 {
-  "name": "speechctl",
+  "name": "heycode",
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "speechctl": "bin/speechctl.ts"
+    "heycode": "bin/heycode.ts"
   },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "speechctl": "tsx bin/speechctl.ts",
-    "speech": "tsx bin/speechctl.ts record"
+    "heycode": "tsx bin/heycode.ts",
+    "speech": "tsx bin/heycode.ts record"
   },
   "keywords": [
     "speech",

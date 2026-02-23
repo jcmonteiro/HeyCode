@@ -40,7 +40,7 @@ Never import adapters from use cases. Never import use cases from domain. Never 
 | `src/factories/` | `createRecorder`, `createTranscriber` |
 | `src/config/` | Config loading (file + env merge) |
 | `src/__tests__/` | All tests |
-| `bin/speechctl.ts` | CLI entry point (runs via `tsx`) |
+| `bin/heycode.ts` | CLI entry point (runs via `tsx`) |
 | `.opencode/plugins/speech-plugin.js` | OpenCode plugin source (stays JS — loaded externally by OpenCode) |
 | `scripts/record.swift` | Native macOS recorder source |
 

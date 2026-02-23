@@ -7,7 +7,7 @@
 // Usage:
 //   hotkey                                    # Default: Cmd+Shift+Space
 //   hotkey --key space --modifiers cmd,shift   # Custom hotkey
-//   hotkey --trigger-path /tmp/speechd-trigger # Custom trigger file path
+//   hotkey --trigger-path /tmp/heycode-trigger # Custom trigger file path
 //
 // Requires Accessibility permissions (System Settings → Privacy → Accessibility).
 //
@@ -31,7 +31,7 @@ func argValue(_ flag: String) -> String? {
 }
 
 let triggerPath = argValue("--trigger-path")
-    ?? (NSString("~/.cache/speechd/hotkey-trigger").expandingTildeInPath)
+    ?? (NSString("~/.cache/heycode/hotkey-trigger").expandingTildeInPath)
 
 let modifiersStr = argValue("--modifiers") ?? "cmd,shift"
 let keyStr = argValue("--key") ?? "space"

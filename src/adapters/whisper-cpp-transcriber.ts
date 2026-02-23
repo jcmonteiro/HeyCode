@@ -36,7 +36,7 @@ export function createWhisperCppTranscriber({ bin, model, language, threads, ext
     async transcribe(filePath: string): Promise<Transcript> {
       await fs.access(filePath)
 
-      const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "speechd-"))
+      const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "heycode-"))
       const outputBase = path.join(outputDir, "transcript")
 
       const args = ["-m", model, "-f", filePath, "-otxt", "-of", outputBase]

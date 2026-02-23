@@ -1,4 +1,4 @@
-# speechctl
+# heycode
 
 A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Records from your microphone via a native AVFoundation Swift binary, transcribes locally, and returns the text. Also ships an [OpenCode](https://opencode.ai) plugin for hands-free coding.
 
@@ -53,7 +53,7 @@ swiftc scripts/hotkey.swift -o scripts/hotkey -framework Carbon
 
 ```bash
 git clone <this-repo>
-cd speechctl
+cd heycode
 pnpm install
 ```
 
@@ -61,40 +61,40 @@ pnpm install
 
 ```bash
 pnpm link --global
-# Now `speechctl` is available system-wide
+# Now `heycode` is available system-wide
 ```
 
 ## CLI usage
 
 ```bash
 # Record with VAD auto-stop and transcribe
-speechctl record --listen
-speechctl record --listen --json
+heycode record --listen
+heycode record --listen --json
 
 # Toggle recording (start/stop manually)
-speechctl record
-speechctl record          # call again to stop and transcribe
+heycode record
+heycode record          # call again to stop and transcribe
 
 # Check recording status
-speechctl record --status
+heycode record --status
 
 # Transcribe an existing audio file
-speechctl transcribe /path/to/audio.wav
-speechctl transcribe --json /path/to/audio.wav
+heycode transcribe /path/to/audio.wav
+heycode transcribe --json /path/to/audio.wav
 
 # Real-time streaming transcription
-speechctl stream
+heycode stream
 
 # Push-to-talk hotkey daemon
-speechctl daemon
-speechctl daemon --key space --modifiers cmd,shift --clipboard
+heycode daemon
+heycode daemon --key space --modifiers cmd,shift --clipboard
 ```
 
-If you haven't linked the CLI, use `pnpm exec tsx bin/speechctl.ts` instead of `speechctl`.
+If you haven't linked the CLI, use `pnpm exec tsx bin/heycode.ts` instead of `heycode`.
 
 ## OpenCode plugin
 
-The repo also provides an OpenCode plugin that exposes speechctl's capabilities inside OpenCode as a `/speech` slash command and a `speech_record` tool the LLM can invoke.
+The repo also provides an OpenCode plugin that exposes heycode's capabilities inside OpenCode as a `/speech` slash command and a `speech_record` tool the LLM can invoke.
 
 ### Plugin installation
 
@@ -107,7 +107,7 @@ mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/speech-plugin.js ~/.config/opencode/plugins/
 ```
 
-The plugin uses absolute imports back into the speechctl repo, so the repo must stay in place (or you can update `projectRoot` in the plugin file).
+The plugin uses absolute imports back into the heycode repo, so the repo must stay in place (or you can update `projectRoot` in the plugin file).
 
 #### 2. Add plugin dependencies
 
@@ -165,7 +165,7 @@ The LLM can invoke the `speech_record` tool to record and transcribe on your beh
 
 ## Configuration
 
-Create `~/.config/speechd/config.json` to override defaults:
+Create `~/.config/heycode/config.json` to override defaults:
 
 ```json
 {
@@ -214,25 +214,25 @@ Create `~/.config/speechd/config.json` to override defaults:
 
 | Variable | Description |
 |---|---|
-| `SPEECHD_CONFIG` | Path to config file (default: `~/.config/speechd/config.json`) |
-| `SPEECHD_RECORDER_BIN` | Path to native recorder binary |
-| `SPEECHD_VAD_ENABLED` | Enable/disable VAD (`true`/`false`) |
-| `SPEECHD_VAD_SILENCE_DURATION` | Seconds of silence before auto-stop |
-| `SPEECHD_VAD_SILENCE_THRESHOLD` | dB threshold for silence detection |
-| `SPEECHD_VAD_GRACE_PERIOD` | Seconds before VAD activates |
-| `SPEECHD_HOTKEY_KEY` | Hotkey key (default: `space`) |
-| `SPEECHD_HOTKEY_MODIFIERS` | Hotkey modifiers (default: `cmd,shift`) |
-| `SPEECHD_HOTKEY_BIN` | Path to hotkey daemon binary |
-| `SPEECHD_PROVIDER` | Transcription provider (`whisper.cpp` or `openai`) |
-| `SPEECHD_WHISPER_BIN` | Path to whisper-cli binary |
-| `SPEECHD_WHISPER_MODEL` | Path to whisper model file |
-| `SPEECHD_WHISPER_LANG` | Transcription language (`auto`, `en`, etc.) |
-| `SPEECHD_WHISPER_THREADS` | Number of CPU threads |
-| `SPEECHD_WHISPER_EXTRA_ARGS` | JSON array of extra args for whisper-cli |
+| `HEYCODE_CONFIG` | Path to config file (default: `~/.config/heycode/config.json`) |
+| `HEYCODE_RECORDER_BIN` | Path to native recorder binary |
+| `HEYCODE_VAD_ENABLED` | Enable/disable VAD (`true`/`false`) |
+| `HEYCODE_VAD_SILENCE_DURATION` | Seconds of silence before auto-stop |
+| `HEYCODE_VAD_SILENCE_THRESHOLD` | dB threshold for silence detection |
+| `HEYCODE_VAD_GRACE_PERIOD` | Seconds before VAD activates |
+| `HEYCODE_HOTKEY_KEY` | Hotkey key (default: `space`) |
+| `HEYCODE_HOTKEY_MODIFIERS` | Hotkey modifiers (default: `cmd,shift`) |
+| `HEYCODE_HOTKEY_BIN` | Path to hotkey daemon binary |
+| `HEYCODE_PROVIDER` | Transcription provider (`whisper.cpp` or `openai`) |
+| `HEYCODE_WHISPER_BIN` | Path to whisper-cli binary |
+| `HEYCODE_WHISPER_MODEL` | Path to whisper model file |
+| `HEYCODE_WHISPER_LANG` | Transcription language (`auto`, `en`, etc.) |
+| `HEYCODE_WHISPER_THREADS` | Number of CPU threads |
+| `HEYCODE_WHISPER_EXTRA_ARGS` | JSON array of extra args for whisper-cli |
 | `OPENAI_API_KEY` | OpenAI API key (for openai provider) |
-| `SPEECHD_STREAMING_BIN` | Path to whisper-stream binary |
-| `SPEECHD_STREAMING_STEP_MS` | Streaming step interval (ms) |
-| `SPEECHD_STREAMING_LENGTH_MS` | Streaming audio length (ms) |
+| `HEYCODE_STREAMING_BIN` | Path to whisper-stream binary |
+| `HEYCODE_STREAMING_STEP_MS` | Streaming step interval (ms) |
+| `HEYCODE_STREAMING_LENGTH_MS` | Streaming audio length (ms) |
 
 ### Configuration reference
 
@@ -303,7 +303,7 @@ src/
   __tests__/           Tests (vitest, TypeScript)
 
 bin/
-  speechctl.ts         CLI entry point (thin shell, runs via tsx)
+  heycode.ts           CLI entry point (thin shell, runs via tsx)
 
 scripts/
   record.swift         Native macOS recorder source (AVFoundation + VAD)

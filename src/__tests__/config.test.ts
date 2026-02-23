@@ -9,12 +9,12 @@ describe("config", () => {
     vi.restoreAllMocks()
 
     // Clear env vars that could affect config
-    delete process.env.SPEECHD_CONFIG
-    delete process.env.SPEECHD_PROVIDER
-    delete process.env.SPEECHD_WHISPER_BIN
-    delete process.env.SPEECHD_WHISPER_MODEL
-    delete process.env.SPEECHD_VAD_ENABLED
-    delete process.env.SPEECHD_RECORDER_BIN
+    delete process.env.HEYCODE_CONFIG
+    delete process.env.HEYCODE_PROVIDER
+    delete process.env.HEYCODE_WHISPER_BIN
+    delete process.env.HEYCODE_WHISPER_MODEL
+    delete process.env.HEYCODE_VAD_ENABLED
+    delete process.env.HEYCODE_RECORDER_BIN
 
     // Re-import to get fresh module
     const mod = await import("../config/config.js")
@@ -23,12 +23,12 @@ describe("config", () => {
   })
 
   afterEach(() => {
-    delete process.env.SPEECHD_CONFIG
-    delete process.env.SPEECHD_PROVIDER
-    delete process.env.SPEECHD_WHISPER_BIN
-    delete process.env.SPEECHD_WHISPER_MODEL
-    delete process.env.SPEECHD_VAD_ENABLED
-    delete process.env.SPEECHD_RECORDER_BIN
+    delete process.env.HEYCODE_CONFIG
+    delete process.env.HEYCODE_PROVIDER
+    delete process.env.HEYCODE_WHISPER_BIN
+    delete process.env.HEYCODE_WHISPER_MODEL
+    delete process.env.HEYCODE_VAD_ENABLED
+    delete process.env.HEYCODE_RECORDER_BIN
   })
 
   it("returns default config when no file or env vars exist", async () => {
@@ -58,7 +58,7 @@ describe("config", () => {
       provider: { type: "openai" },
     }))
 
-    process.env.SPEECHD_PROVIDER = "whisper.cpp"
+    process.env.HEYCODE_PROVIDER = "whisper.cpp"
 
     const config = await loadConfig()
 
@@ -68,7 +68,7 @@ describe("config", () => {
   it("parses VAD_ENABLED env var correctly", async () => {
     vi.spyOn(fs, "readFile").mockRejectedValue(new Error("ENOENT"))
 
-    process.env.SPEECHD_VAD_ENABLED = "false"
+    process.env.HEYCODE_VAD_ENABLED = "false"
     const config = await loadConfig()
     expect(config.capture.vad.enabled).toBe(false)
   })

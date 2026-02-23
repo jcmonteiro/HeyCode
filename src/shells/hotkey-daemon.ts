@@ -19,7 +19,7 @@ import { recordAndTranscribe } from "../usecases/record-and-transcribe.js"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const DEFAULT_TRIGGER_PATH = path.join(
-  os.homedir(), ".cache", "speechd", "hotkey-trigger",
+  os.homedir(), ".cache", "heycode", "hotkey-trigger",
 )
 
 interface HotkeyDaemonOpts {

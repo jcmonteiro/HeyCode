@@ -92,11 +92,11 @@ describe("createNativeRecorder", () => {
   it("starts recording and writes state file", async () => {
     // No existing state
     vi.spyOn(fs, "readFile").mockRejectedValue(new Error("ENOENT"))
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-audio-abc")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-audio-abc")
     vi.spyOn(fs, "mkdir").mockResolvedValue(undefined)
     vi.spyOn(fs, "writeFile").mockResolvedValue(undefined)
 
-    const child = mockChild("recording:/tmp/speechd-audio-abc/test.wav")
+    const child = mockChild("recording:/tmp/heycode-audio-abc/test.wav")
     execa.mockReturnValue(child)
 
     const recorder = createNativeRecorder({ binPath: "/bin/record" })
@@ -104,19 +104,19 @@ describe("createNativeRecorder", () => {
 
     expect(execa).toHaveBeenCalledWith(
       "/bin/record",
-      expect.arrayContaining([expect.stringContaining("/tmp/speechd-audio-abc/")]),
+      expect.arrayContaining([expect.stringContaining("/tmp/heycode-audio-abc/")]),
       expect.objectContaining({ detached: true }),
     )
-    expect(outputPath).toContain("/tmp/speechd-audio-abc/")
+    expect(outputPath).toContain("/tmp/heycode-audio-abc/")
   })
 
   it("passes VAD flags when VAD is enabled", async () => {
     vi.spyOn(fs, "readFile").mockRejectedValue(new Error("ENOENT"))
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-audio-abc")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-audio-abc")
     vi.spyOn(fs, "mkdir").mockResolvedValue(undefined)
     vi.spyOn(fs, "writeFile").mockResolvedValue(undefined)
 
-    const child = mockChild("recording:/tmp/speechd-audio-abc/test.wav")
+    const child = mockChild("recording:/tmp/heycode-audio-abc/test.wav")
     execa.mockReturnValue(child)
 
     const recorder = createNativeRecorder({
@@ -139,11 +139,11 @@ describe("createNativeRecorder", () => {
 
   it("does not pass VAD flags when VAD is disabled", async () => {
     vi.spyOn(fs, "readFile").mockRejectedValue(new Error("ENOENT"))
-    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/speechd-audio-abc")
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-audio-abc")
     vi.spyOn(fs, "mkdir").mockResolvedValue(undefined)
     vi.spyOn(fs, "writeFile").mockResolvedValue(undefined)
 
-    const child = mockChild("recording:/tmp/speechd-audio-abc/test.wav")
+    const child = mockChild("recording:/tmp/heycode-audio-abc/test.wav")
     execa.mockReturnValue(child)
 
     const recorder = createNativeRecorder({
