@@ -3,31 +3,34 @@
 ## Build & Test Commands
 
 ```bash
-pnpm test                 # Run all tests once (vitest run)
+pnpm build               # Compile Swift binaries + TypeScript (swiftc + tsc)
+pnpm test                 # Run all 107 tests once (vitest run)
 pnpm run test:watch       # Watch mode (vitest)
 pnpm exec vitest run src/__tests__/domain.test.ts          # Single test file
 pnpm exec vitest run -t "starts recording when idle"       # Single test by name
 pnpm exec tsc --noEmit    # Type-check without emitting
 ```
 
-No linter or formatter is configured. TypeScript with strict mode, ESM only.
+No linter or formatter is configured. TypeScript strict mode, ESM only.
 
 ## Architecture (Hexagonal / Ports & Adapters)
 
 ```
-domain  ←  ports  ←  usecases  ←  adapters / factories / plugin / CLI
+domain  ←  ports  ←  usecases  ←  adapters / factories / shells / plugin / CLI
 ```
 
 ### Dependency rule — strictly enforced
 
-- **`src/domain/`** depends on nothing. Value objects, error types only.
-- **`src/ports/`** depends only on domain types. Defines contracts (TypeScript interfaces).
-- **`src/usecases/`** depends only on ports and domain. Pure orchestration — never imports adapters.
-- **`src/adapters/`** implements ports. May depend on external libs (`execa`, `node:fs`).
-- **`src/factories/`** wires config → concrete adapters. Only place that knows which adapter to instantiate.
-- **`bin/`** and **`~/.config/opencode/plugins/`** are thin shells: load config, call factories, delegate to use cases.
+| Layer | May depend on | Must NOT depend on |
+|-------|--------------|-------------------|
+| `src/domain/` | nothing | ports, usecases, adapters |
+| `src/ports/` | domain | usecases, adapters |
+| `src/usecases/` | ports, domain | adapters, factories |
+| `src/adapters/` | ports, domain, external libs | usecases |
+| `src/factories/` | adapters, ports, config | usecases |
+| `bin/`, plugin | factories, usecases, config | — |
 
-Never import adapters from use cases. Never import use cases from domain. Never bypass ports.
+Never import adapters from use cases. Never bypass ports.
 
 ### Key directories
 
@@ -35,40 +38,38 @@ Never import adapters from use cases. Never import use cases from domain. Never 
 |---|---|
 | `src/domain/` | `Transcript`, `Recording` value objects; `SpeechError` hierarchy |
 | `src/ports/` | `RecorderPort`, `TranscriberPort` contracts + assertion guards |
-| `src/usecases/` | `toggleRecording`, `transcribeFile` |
+| `src/usecases/` | `toggleRecording`, `transcribeFile`, `recordAndTranscribe` |
 | `src/adapters/` | `native-recorder`, `whisper-cpp-transcriber`, `openai-transcriber` |
 | `src/factories/` | `createRecorder`, `createTranscriber` |
 | `src/config/` | Config loading (file + env merge) |
-| `src/__tests__/` | All tests |
+| `src/__tests__/` | All tests (vitest) |
 | `bin/heycode.ts` | CLI entry point (runs via `tsx`) |
-| `.opencode/plugins/speech-plugin.js` | OpenCode plugin source (stays JS — loaded externally by OpenCode) |
-| `scripts/record.swift` | Native macOS recorder source |
+| `.opencode/plugins/speech-plugin.js` | OpenCode plugin (plain JS — loaded externally) |
+| `scripts/record.swift` | Native macOS recorder (AVFoundation + VAD) |
+| `scripts/hotkey.swift` | Native macOS global hotkey listener |
 
 ## TypeScript Configuration
 
-- **`tsconfig.json`**: `"module": "Node16"`, `"moduleResolution": "Node16"`, `"strict": true`, `"target": "ES2022"`, `outDir: "dist"`
-- All source files are `.ts`, all test files are `.test.ts`
-- Import paths use `.js` extensions (Node16 module resolution requires this even for `.ts` files)
+- `tsconfig.json`: `"module": "Node16"`, `"moduleResolution": "Node16"`, `"strict": true`, `"target": "ES2022"`, `outDir: "dist"`
+- Import paths use `.js` extensions (Node16 resolution requires this even for `.ts` files)
 - CLI entry point uses `#!/usr/bin/env tsx` shebang for direct execution
-- vitest supports TypeScript natively — no separate compilation step for tests
-- The OpenCode plugin (`.opencode/plugins/speech-plugin.js`) remains plain JavaScript since it is loaded externally by the OpenCode runtime
+- vitest handles TypeScript natively — no compilation step for tests
+- The OpenCode plugin stays plain JS (loaded by the OpenCode runtime)
 
 ## Code Style
 
 ### Module system
-- ESM only (`"type": "module"` in package.json). All files use `import`/`export`.
+- ESM only (`"type": "module"`). All files use `import`/`export`.
 - Always include `.js` extension in relative imports: `import { Foo } from "../domain/foo.js"`.
 
 ### Imports — ordering convention
-1. External packages (`execa`, `commander`, `@opencode-ai/plugin`)
+1. External packages (`execa`, `commander`)
 2. Node built-ins with `node:` prefix (`node:path`, `node:fs/promises`, `node:os`)
 3. Internal domain/ports/usecases
 4. Internal adapters/factories
 
 ### Formatting
-- 2-space indentation.
-- Double quotes for strings.
-- No semicolons (ASI).
+- 2-space indentation, double quotes, no semicolons (ASI).
 - Trailing commas in multiline argument lists.
 - ~100 char line width (soft).
 
@@ -77,7 +78,7 @@ Never import adapters from use cases. Never import use cases from domain. Never 
 - **Functions/variables**: camelCase (`createRecorder`, `toggleRecording`).
 - **Classes**: PascalCase (`Transcript`, `Recording`, `SpeechError`).
 - **Constants**: camelCase or UPPER_SNAKE for numeric constants (`START_TIMEOUT_MS`).
-- **Factories**: `createXxx()` functions that return port-shaped plain objects.
+- **Factories**: `createXxx()` returning port-shaped plain objects.
 - **Test files**: `<module-name>.test.ts` in `src/__tests__/`.
 
 ### Functions
@@ -87,10 +88,9 @@ Never import adapters from use cases. Never import use cases from domain. Never 
 - No classes for adapters — use factory functions returning object literals with methods.
 
 ### Types
-- TypeScript with strict mode enabled.
-- Use `interface` for port contracts (in port files) and domain shapes.
+- Use `interface` for port contracts and domain shapes.
 - Use `type` for unions, intersections, and utility types.
-- Avoid `any` except where truly necessary (e.g., deep recursive config merging) — add a comment explaining why.
+- Avoid `any` except where truly necessary — add a comment explaining why.
 - Prefer explicit return types on exported functions.
 
 ### Domain objects
@@ -128,10 +128,8 @@ vi.mock("execa", () => ({
   execa: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
 }))
 const { createFoo } = await import("../adapters/foo.js")
-const { execa } = await import("execa") as any
+const { execa } = await import("execa") as any   // as any: vi.mock replaces the module shape
 ```
-
-Note: `as any` is used on mocked module imports because `vi.mock` replaces the module shape.
 
 Use `vi.spyOn(fs, "readFile")` for node:fs mocks. Call `vi.restoreAllMocks()` in `beforeEach`.
 
@@ -151,11 +149,9 @@ Use `vi.spyOn(fs, "readFile")` for node:fs mocks. Call `vi.restoreAllMocks()` in
 - **pnpm** (not npm) for all package management.
 - `pnpm-lock.yaml` is committed; no `package-lock.json`.
 - Plugin deps live in `.opencode/package.json`, not root `package.json`.
-- Dev dependencies: `typescript`, `tsx`, `@types/node`, `vitest`.
 
 ## Git Conventions
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:`.
-- Don't commit `scripts/record` (compiled binary — gitignored).
-- Don't commit `.opencode/node_modules/`.
-- Don't commit `dist/` (TypeScript output — gitignored).
+- Don't commit compiled binaries (`scripts/record`, `scripts/hotkey` — gitignored).
+- Don't commit `dist/`, `.opencode/node_modules/`, or `node_modules/`.
