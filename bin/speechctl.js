@@ -16,7 +16,7 @@ import { loadConfig } from "../src/config/config.js"
 import { createRecorder } from "../src/factories/create-recorder.js"
 import { createTranscriber } from "../src/factories/create-transcriber.js"
 import { toggleRecording } from "../src/usecases/toggle-recording.js"
-import { startAndWaitRecording } from "../src/usecases/start-and-wait-recording.js"
+import { recordAndTranscribe } from "../src/usecases/record-and-transcribe.js"
 import { transcribeFile } from "../src/usecases/transcribe-file.js"
 
 const program = new Command()
@@ -67,24 +67,30 @@ program
     if (options.listen) {
       const transcriber = createTranscriber(config)
 
-      const { transcript } = await startAndWaitRecording({
+      const result = await recordAndTranscribe({
         recorder,
         transcriber,
+        vadEnabled: true,
         onStarted: () => process.stderr.write("Listening... (will stop on silence)\n"),
         onStopped: (p) => process.stderr.write(`Stopped. Transcribing ${p}...\n`),
       })
 
+      if (result.action !== "stopped") {
+        process.stderr.write("Unexpected state\n")
+        return
+      }
+
       if (options.json) {
         process.stdout.write(
-          JSON.stringify({ text: transcript.text, meta: transcript.meta }, null, 2),
+          JSON.stringify({ text: result.transcript.text, meta: result.transcript.meta }, null, 2),
         )
         return
       }
-      process.stdout.write(`${transcript.text}\n`)
+      process.stdout.write(`${result.transcript.text}\n`)
       return
     }
 
-    // Default: toggle recording
+    // Default: toggle recording (no transcription)
     const result = await toggleRecording({ recorder })
 
     if (result.action === "started") {
@@ -134,7 +140,7 @@ program
   .option("--clipboard", "Copy transcript to clipboard instead of printing")
   .action(async (options) => {
     const { createHotkeyDaemon } = await import(
-      "../src/adapters/hotkey-daemon.js"
+      "../src/shells/hotkey-daemon.js"
     )
     const config = await loadConfig()
     const recorder = createRecorder(config)
@@ -149,6 +155,7 @@ program
       transcriber,
       key: options.key,
       modifiers: options.modifiers,
+      vadEnabled: config.capture?.vad?.enabled ?? false,
       onTranscript: async (text) => {
         if (!text) {
           process.stderr.write("(no speech detected)\n")

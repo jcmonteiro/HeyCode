@@ -7,7 +7,7 @@
  *   - Without VAD: /speech toggles start/stop, transcribes on stop
  * - speech_record tool: allows the LLM to trigger recording on behalf of the user
  *
- * All business logic lives in src/usecases/ and src/adapters/.
+ * All business logic lives in src/usecases/.
  * This file only handles OpenCode-specific concerns (toasts, prompt appending).
  *
  * Lives in .opencode/plugins/ to resolve @opencode-ai/plugin from .opencode/node_modules/.
@@ -60,53 +60,40 @@ const toast = async (client, message, variant = "info") => {
 }
 
 // ---------------------------------------------------------------------------
-// Shared recording + transcription helpers
+// Shared result handler — maps use case results to plugin actions
 // ---------------------------------------------------------------------------
 
 /**
- * Handle the VAD auto-stop flow: start → wait for silence → transcribe.
- * Returns the transcript or null if no speech detected.
+ * Handle the result of recordAndTranscribe for the /speech command.
+ * Appends transcript to prompt or shows appropriate toast.
+ *
+ * @returns {{ text?: string }} - text if transcript was produced
  */
-const recordWithVad = async (client, recorder, transcriber) => {
-  const { startAndWaitRecording } = await import(
-    path.join(projectRoot, "src", "usecases", "start-and-wait-recording.js")
-  )
-
-  const { transcript } = await startAndWaitRecording({
-    recorder,
-    transcriber,
-    onStarted: () => toast(client, "Recording... will auto-stop on silence"),
-    onStopped: () => toast(client, "Transcribing..."),
-  })
-
-  return transcript
-}
-
-/**
- * Handle the manual toggle flow: start/stop + transcribe.
- * Returns { action, transcript? }.
- */
-const recordWithToggle = async (client, recorder, transcriber) => {
-  const { toggleRecording } = await import(
-    path.join(projectRoot, "src", "usecases", "toggle-recording.js")
-  )
-  const { transcribeFile } = await import(
-    path.join(projectRoot, "src", "usecases", "transcribe-file.js")
-  )
-
-  const result = await toggleRecording({ recorder })
-
+const handleResult = async (client, result) => {
   if (result.action === "started") {
-    return { action: "started" }
+    await toast(
+      client,
+      _vadEnabled
+        ? "Recording... will auto-stop on silence"
+        : "Recording... type /speech again to stop",
+    )
+    return {}
   }
 
-  await toast(client, "Transcribing...")
-  const transcript = await transcribeFile({
-    transcriber,
-    filePath: result.outputPath,
-  })
+  if (result.action === "cancelled") {
+    await toast(client, "Recording cancelled", "warning")
+    return {}
+  }
 
-  return { action: "stopped", transcript }
+  // action === "stopped"
+  if (result.transcript.isEmpty) {
+    await toast(client, "No speech detected — try again", "warning")
+    return {}
+  }
+
+  await client.tui.appendPrompt({ body: { text: result.transcript.text } })
+  await toast(client, "Transcript appended to prompt", "success")
+  return { text: result.transcript.text }
 }
 
 // ---------------------------------------------------------------------------
@@ -149,44 +136,17 @@ const SpeechPlugin = async ({ client }) => {
           return
         }
 
-        // VAD mode: single /speech starts recording and auto-stops on silence
-        if (_vadEnabled && typeof recorder.waitForStop === "function") {
-          // Check if already recording — if so, force stop (escape hatch)
-          const status = await recorder.status()
-          if (status) {
-            await recorder.stop()
-            await toast(client, "Recording cancelled", "warning")
-            output.parts = []
-            return
-          }
+        // Record and transcribe (handles both VAD and toggle modes)
+        const { recordAndTranscribe } = await import(
+          path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
+        )
+        const result = await recordAndTranscribe({
+          recorder,
+          transcriber,
+          vadEnabled: _vadEnabled,
+        })
 
-          const transcript = await recordWithVad(client, recorder, transcriber)
-
-          if (transcript.isEmpty) {
-            await toast(client, "No speech detected — try again", "warning")
-          } else {
-            await client.tui.appendPrompt({ body: { text: transcript.text } })
-            await toast(client, "Transcript appended to prompt", "success")
-          }
-          output.parts = []
-          return
-        }
-
-        // Manual toggle mode: /speech to start, /speech again to stop
-        const result = await recordWithToggle(client, recorder, transcriber)
-
-        if (result.action === "started") {
-          await toast(client, "Recording... type /speech again to stop")
-          output.parts = []
-          return
-        }
-
-        if (result.transcript.isEmpty) {
-          await toast(client, "No speech detected — try again", "warning")
-        } else {
-          await client.tui.appendPrompt({ body: { text: result.transcript.text } })
-          await toast(client, "Transcript appended to prompt", "success")
-        }
+        await handleResult(client, result)
         output.parts = []
       } catch (err) {
         await toast(client, `Speech error: ${err.message || err}`, "error")
@@ -223,54 +183,33 @@ const SpeechPlugin = async ({ client }) => {
             return `Transcript: ${transcript.text}`
           }
 
-          // VAD mode: record → auto-stop → transcribe in one call
-          if (_vadEnabled && typeof recorder.waitForStop === "function") {
-            const status = await recorder.status()
-            if (status) {
-              await recorder.stop()
-              return "Recording cancelled."
-            }
-
-            await toast(client, "Recording... will auto-stop on silence")
-            const transcript = await recordWithVad(client, recorder, transcriber)
-
-            if (transcript.isEmpty) {
-              await toast(client, "No speech detected", "warning")
-              return "No speech detected. The recording was silent. Ask the user to try again."
-            }
-
-            await toast(client, "Transcription complete", "success")
-            return `Transcript: ${transcript.text}`
-          }
-
-          // Manual toggle mode
-          const { toggleRecording } = await import(
-            path.join(projectRoot, "src", "usecases", "toggle-recording.js")
+          // Record and transcribe (handles both VAD and toggle modes)
+          const { recordAndTranscribe } = await import(
+            path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
           )
-          const { transcribeFile } = await import(
-            path.join(projectRoot, "src", "usecases", "transcribe-file.js")
-          )
-
-          const result = await toggleRecording({ recorder })
+          const result = await recordAndTranscribe({
+            recorder,
+            transcriber,
+            vadEnabled: _vadEnabled,
+          })
 
           if (result.action === "started") {
-            await toast(client, "Recording... the tool will be called again to stop")
+            await toast(client, "Recording... call again to stop")
             return "Recording started. Call this tool again (without arguments) to stop and get the transcript."
           }
 
-          await toast(client, "Transcribing...")
-          const transcript = await transcribeFile({
-            transcriber,
-            filePath: result.outputPath,
-          })
+          if (result.action === "cancelled") {
+            return "Recording cancelled."
+          }
 
-          if (transcript.isEmpty) {
+          // action === "stopped"
+          if (result.transcript.isEmpty) {
             await toast(client, "No speech detected", "warning")
             return "No speech detected. The recording was silent. Ask the user to try again."
           }
 
           await toast(client, "Transcription complete", "success")
-          return `Transcript: ${transcript.text}`
+          return `Transcript: ${result.transcript.text}`
         },
       }),
     },
