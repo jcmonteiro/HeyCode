@@ -18,15 +18,9 @@ const resolveConfigPath = () => {
 }
 
 export const defaultConfig = {
-  server: {
-    host: "127.0.0.1",
-    port: 7331,
-  },
   capture: {
-    tool: "native",
     native: {
       bin: undefined, // auto-resolved to scripts/record
-      device: undefined,
     },
     vad: {
       enabled: true,
@@ -38,13 +32,6 @@ export const defaultConfig = {
       key: "space",
       modifiers: "cmd,shift",
       bin: undefined, // auto-resolved to scripts/hotkey
-    },
-    // Legacy afrecord config kept for reference
-    afrecord: {
-      bin: "afrecord",
-      format: "cd",
-      type: "wav",
-      device: undefined,
     },
   },
   provider: {
@@ -83,14 +70,10 @@ export const loadConfig = async () => {
   }
 
   const envConfig = {
-    server: {
-      host: process.env.SPEECHD_SERVER_HOST,
-      port: process.env.SPEECHD_SERVER_PORT
-        ? Number(process.env.SPEECHD_SERVER_PORT)
-        : undefined,
-    },
     capture: {
-      tool: process.env.SPEECHD_CAPTURE_TOOL,
+      native: {
+        bin: process.env.SPEECHD_RECORDER_BIN,
+      },
       vad: {
         enabled: process.env.SPEECHD_VAD_ENABLED !== undefined
           ? process.env.SPEECHD_VAD_ENABLED !== "false"
@@ -110,12 +93,6 @@ export const loadConfig = async () => {
         modifiers: process.env.SPEECHD_HOTKEY_MODIFIERS,
         bin: process.env.SPEECHD_HOTKEY_BIN,
       },
-      afrecord: {
-        bin: process.env.SPEECHD_AFRECORD_BIN,
-        format: process.env.SPEECHD_AFRECORD_FORMAT,
-        type: process.env.SPEECHD_AFRECORD_TYPE,
-        device: process.env.SPEECHD_AFRECORD_DEVICE,
-      },
     },
     provider: {
       type: process.env.SPEECHD_PROVIDER,
@@ -132,6 +109,21 @@ export const loadConfig = async () => {
         apiKey: process.env.OPENAI_API_KEY || process.env.SPEECHD_OPENAI_KEY,
         model: process.env.SPEECHD_OPENAI_MODEL,
         language: process.env.SPEECHD_OPENAI_LANG,
+      },
+      streaming: {
+        bin: process.env.SPEECHD_STREAMING_BIN,
+        stepMs: process.env.SPEECHD_STREAMING_STEP_MS
+          ? Number(process.env.SPEECHD_STREAMING_STEP_MS)
+          : undefined,
+        lengthMs: process.env.SPEECHD_STREAMING_LENGTH_MS
+          ? Number(process.env.SPEECHD_STREAMING_LENGTH_MS)
+          : undefined,
+        captureDevice: process.env.SPEECHD_STREAMING_CAPTURE_DEVICE
+          ? Number(process.env.SPEECHD_STREAMING_CAPTURE_DEVICE)
+          : undefined,
+        vadThreshold: process.env.SPEECHD_STREAMING_VAD_THRESHOLD
+          ? Number(process.env.SPEECHD_STREAMING_VAD_THRESHOLD)
+          : undefined,
       },
     },
   }

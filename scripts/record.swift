@@ -64,10 +64,6 @@ do {
     exit(1)
 }
 
-// Use a file marker to signal stop (more reliable than signals for detached processes)
-let stopMarker = outputURL.deletingLastPathComponent()
-    .appendingPathComponent(".stop-\(ProcessInfo.processInfo.processIdentifier)")
-
 var running = true
 
 func handleStop(_: Int32) {
@@ -94,12 +90,6 @@ let startTime = Date()
 var silentSince: Date? = nil
 
 while running {
-    // Check for stop-marker file (used by the Node.js process)
-    if FileManager.default.fileExists(atPath: stopMarker.path) {
-        try? FileManager.default.removeItem(at: stopMarker)
-        break
-    }
-
     // VAD silence detection (only after grace period)
     if vadEnabled {
         let elapsed = Date().timeIntervalSince(startTime)
