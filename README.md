@@ -35,33 +35,19 @@ curl -L -o ~/.local/share/whisper-cpp/models/ggml-large-v3-turbo.bin \
 
 > The Homebrew formula ships a test stub model at `/opt/homebrew/share/whisper-cpp/` that is too small to produce real transcriptions. Use a real model instead.
 
-### Build the native recorder
-
-The recorder is a Swift binary using AVFoundation. Compile it once:
-
-```bash
-swiftc scripts/record.swift -o scripts/record
-```
-
-For the hotkey daemon (optional, for push-to-talk):
-
-```bash
-swiftc scripts/hotkey.swift -o scripts/hotkey -framework Carbon
-```
-
 ## Install
 
 ```bash
-git clone <this-repo>
-cd heycode
+git clone https://github.com/jcmonteiro/HeyCode.git
+cd HeyCode
 pnpm install
+pnpm build          # compiles Swift binaries + TypeScript
 ```
 
-### Link the CLI globally (optional)
+To make the `heycode` command available system-wide:
 
 ```bash
 pnpm link --global
-# Now `heycode` is available system-wide
 ```
 
 ## CLI usage
