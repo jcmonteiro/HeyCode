@@ -2,19 +2,24 @@
  * OpenCode Speech Plugin
  *
  * Thin integration shell that wires the speech domain into OpenCode:
- * - /speech command: records speech and transcribes it
- *   - With VAD: one /speech starts recording, auto-stops on silence, transcribes
- *   - Without VAD: /speech toggles start/stop, transcribes on stop
- *   - The transcript replaces the command's text part so it becomes the
- *     user message sent to the LLM.
- * - speech_record tool: allows the LLM to trigger recording on behalf of the user
+ *
+ * - Hotkey daemon: spawns the native macOS hotkey binary at startup.
+ *   When the global hotkey is pressed (default Cmd+Shift+Space), the plugin
+ *   records from the microphone, transcribes via whisper.cpp, and injects the
+ *   transcript into the TUI input field via client.tui.appendPrompt().
+ *
+ * - speech_record tool: allows the LLM to trigger recording on behalf of the
+ *   user. Returns the transcript as a tool result string.
  *
  * All business logic lives in src/usecases/.
- * This file only handles OpenCode-specific concerns (toasts, command parts).
+ * This file only handles OpenCode-specific concerns (daemon lifecycle, toasts,
+ * TUI input injection).
  *
- * Lives in .opencode/plugins/ to resolve @opencode-ai/plugin from .opencode/node_modules/.
+ * Lives in .opencode/plugins/ to resolve @opencode-ai/plugin from
+ * .opencode/node_modules/.
  */
 import { tool } from "@opencode-ai/plugin"
+import { spawn } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -28,6 +33,7 @@ const projectRoot = path.resolve(__dirname, "..", "..")
 let _recorder = null
 let _transcriber = null
 let _vadEnabled = false
+let _config = null
 
 async function getDeps() {
   if (_recorder && _transcriber) return { recorder: _recorder, transcriber: _transcriber }
@@ -42,40 +48,11 @@ async function getDeps() {
     path.join(projectRoot, "src", "factories", "create-transcriber.js")
   )
 
-  const config = await loadConfig()
-  _recorder = createRecorder(config)
-  _transcriber = createTranscriber(config)
-  _vadEnabled = config.capture?.vad?.enabled ?? false
+  _config = await loadConfig()
+  _recorder = createRecorder(_config)
+  _transcriber = createTranscriber(_config)
+  _vadEnabled = _config.capture?.vad?.enabled ?? false
   return { recorder: _recorder, transcriber: _transcriber }
-}
-
-// ---------------------------------------------------------------------------
-// Command output helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Find the first text part in the output.parts array.
- * OpenCode pre-populates parts from the command template —
- * we must modify existing parts, never replace the array, because
- * the parts carry server-assigned ids (id, sessionID, messageID).
- * Replacing the array with new objects lacking those fields causes
- * a 400 "Bad request" error.
- */
-const findTextPart = (parts) =>
-  parts.find((p) => p.type === "text")
-
-/**
- * Rewrite the command's text part so the message carries the given content.
- * If no text part exists, we push a minimal one (shouldn't happen with
- * a well-configured template, but guards against edge cases).
- */
-const setCommandText = (output, text) => {
-  const part = findTextPart(output.parts)
-  if (part) {
-    part.text = text
-  } else {
-    output.parts.push({ type: "text", text })
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -91,44 +68,143 @@ const toast = async (client, message, variant = "info") => {
 }
 
 // ---------------------------------------------------------------------------
-// Shared result handler — maps use case results to plugin actions
+// Hotkey daemon — spawns native binary, listens for trigger events
 // ---------------------------------------------------------------------------
 
-/**
- * Handle the result of recordAndTranscribe for the /speech command.
- * Returns the text to set on the command's message part.
- *
- * - "started": recording has begun (toggle mode) — marker message
- * - "cancelled": recording force-stopped — marker message
- * - "stopped" + transcript: transcript text becomes the user message
- * - "stopped" + empty: no speech detected — marker message
- *
- * @returns {Promise<string>} text for the command part
- */
-const handleResult = async (client, result) => {
-  if (result.action === "started") {
-    await toast(
-      client,
-      _vadEnabled
-        ? "Recording... will auto-stop on silence"
-        : "Recording... type /speech again to stop",
-    )
-    return "[Recording started — say /speech again to stop and transcribe]"
+function startHotkeyDaemon(client) {
+  let child = null
+  let busy = false
+
+  const start = async () => {
+    // Ensure deps are loaded so we have config
+    await getDeps()
+
+    const hotkeyBin = _config?.capture?.hotkey?.bin
+      || path.resolve(projectRoot, "scripts", "hotkey")
+    const key = _config?.capture?.hotkey?.key || "space"
+    const modifiers = _config?.capture?.hotkey?.modifiers || "cmd,shift"
+
+    child = spawn(hotkeyBin, ["--key", key, "--modifiers", modifiers], {
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+
+    // Wait for "ready" before processing triggers
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Hotkey daemon failed to start within 5s"))
+      }, 5000)
+
+      const onData = (data) => {
+        const line = data.toString().trim()
+        if (line === "ready") {
+          clearTimeout(timeout)
+          child.stdout.off("data", onData)
+          resolve()
+        }
+        if (line.startsWith("error:")) {
+          clearTimeout(timeout)
+          reject(new Error(line.slice(6)))
+        }
+      }
+
+      child.stdout.on("data", onData)
+
+      child.on("error", (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
+    })
+
+    // Listen for hotkey triggers
+    child.stdout.on("data", (data) => {
+      const line = data.toString().trim()
+      if (line === "triggered") {
+        handleHotkey(client)
+      }
+    })
+
+    child.stderr.on("data", (data) => {
+      // Log but don't crash
+      console.error(`[speech-plugin] hotkey stderr: ${data.toString().trim()}`)
+    })
+
+    child.on("exit", (code) => {
+      if (child) {
+        console.error(`[speech-plugin] hotkey daemon exited with code ${code}`)
+      }
+    })
   }
 
-  if (result.action === "cancelled") {
-    await toast(client, "Recording cancelled", "warning")
-    return "[Recording cancelled]"
+  const handleHotkey = async (client) => {
+    if (busy) return
+    busy = true
+
+    try {
+      const { recorder, transcriber } = await getDeps()
+      const { recordAndTranscribe } = await import(
+        path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
+      )
+
+      await toast(client, "Recording...", "info")
+
+      const result = await recordAndTranscribe({
+        recorder,
+        transcriber,
+        vadEnabled: _vadEnabled,
+        onStarted: () => toast(client, "Recording...", "info"),
+        onStopped: () => toast(client, "Transcribing...", "info"),
+      })
+
+      if (result.action === "started") {
+        // Toggle mode without VAD: recording started, next hotkey stops it
+        await toast(
+          client,
+          "Recording... press hotkey again to stop",
+          "info",
+        )
+        busy = false
+        return
+      }
+
+      if (result.action === "cancelled") {
+        await toast(client, "Recording cancelled", "warning")
+        busy = false
+        return
+      }
+
+      // action === "stopped" — transcription complete
+      if (result.transcript.isEmpty) {
+        await toast(client, "No speech detected — try again", "warning")
+        busy = false
+        return
+      }
+
+      await toast(client, "Transcript ready", "success")
+      try {
+        await client.tui.appendPrompt({ body: { text: result.transcript.text } })
+      } catch (err) {
+        console.error(`[speech-plugin] failed to append prompt: ${err.message || err}`)
+      }
+    } catch (err) {
+      await toast(client, `Speech error: ${err.message || err}`, "error")
+    } finally {
+      busy = false
+    }
   }
 
-  // action === "stopped"
-  if (result.transcript.isEmpty) {
-    await toast(client, "No speech detected — try again", "warning")
-    return "[No speech detected]"
+  const stop = () => {
+    if (child) {
+      const pid = child.pid
+      child = null
+      try {
+        process.kill(pid, "SIGTERM")
+      } catch {
+        // already gone
+      }
+    }
   }
 
-  await toast(client, "Transcript ready", "success")
-  return result.transcript.text
+  return { start, stop }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,54 +214,25 @@ const handleResult = async (client, result) => {
 /** @type {import("@opencode-ai/plugin").Plugin} */
 const SpeechPlugin = async ({ client }) => {
   let greeted = false
+  const daemon = startHotkeyDaemon(client)
+
+  // Start daemon asynchronously — don't block plugin init
+  daemon.start().then(() => {
+    toast(client, "Speech plugin ready (Cmd+Shift+Space)", "success")
+  }).catch((err) => {
+    console.error(`[speech-plugin] daemon failed to start: ${err.message || err}`)
+    toast(client, `Speech daemon failed: ${err.message || err}`, "error")
+  })
 
   return {
     event: async ({ event }) => {
       if (!greeted && event.type === "server.connected") {
         greeted = true
-        await toast(client, "Speech plugin loaded", "success")
       }
-    },
 
-    "command.execute.before": async (input, output) => {
-      if ((input.command || "").trim() !== "speech") return
-
-      try {
-        const { recorder, transcriber } = await getDeps()
-        const args = (input.arguments || "").trim()
-
-        // /speech <filepath> — transcribe a given file directly
-        if (args) {
-          const { transcribeFile } = await import(
-            path.join(projectRoot, "src", "usecases", "transcribe-file.js")
-          )
-          await toast(client, "Transcribing file...")
-          const transcript = await transcribeFile({ transcriber, filePath: args })
-          if (transcript.isEmpty) {
-            setCommandText(output, "[No speech detected in file]")
-            await toast(client, "No speech detected in file", "warning")
-          } else {
-            setCommandText(output, transcript.text)
-            await toast(client, "Transcript ready", "success")
-          }
-          return
-        }
-
-        // Record and transcribe (handles both VAD and toggle modes)
-        const { recordAndTranscribe } = await import(
-          path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
-        )
-        const result = await recordAndTranscribe({
-          recorder,
-          transcriber,
-          vadEnabled: _vadEnabled,
-        })
-
-        const cmdText = await handleResult(client, result)
-        setCommandText(output, cmdText)
-      } catch (err) {
-        await toast(client, `Speech error: ${err.message || err}`, "error")
-        setCommandText(output, `[Speech error: ${err.message || err}]`)
+      // Clean up daemon when OpenCode exits
+      if (event.type === "server.instance.disposed") {
+        daemon.stop()
       }
     },
 
