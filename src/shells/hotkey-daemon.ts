@@ -74,8 +74,6 @@ export function createHotkeyDaemon({
         // already cleaned
       }
 
-      emit("recording")
-
       const result = await recordAndTranscribe({
         recorder,
         transcriber,
