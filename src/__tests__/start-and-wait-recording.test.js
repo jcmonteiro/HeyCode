@@ -105,4 +105,17 @@ describe("startAndWaitRecording", () => {
     await expect(startAndWaitRecording({ recorder, transcriber }))
       .rejects.toThrow("model not found")
   })
+
+  it("throws TypeError if recorder lacks waitForStop", async () => {
+    const recorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      status: vi.fn().mockResolvedValue(null),
+      // no waitForStop
+    }
+    const transcriber = createMockTranscriber()
+
+    await expect(startAndWaitRecording({ recorder, transcriber }))
+      .rejects.toThrow(TypeError)
+  })
 })

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { createTranscriber } from "../factories/create-transcriber.js"
+import { createRecorder } from "../factories/create-recorder.js"
+import { createStreamingTranscriber } from "../factories/create-streaming-transcriber.js"
 import { TranscriberConfigError } from "../domain/errors.js"
 
 describe("createTranscriber", () => {
@@ -48,5 +50,73 @@ describe("createTranscriber", () => {
       },
     }
     expect(() => createTranscriber(config)).toThrow(TranscriberConfigError)
+  })
+})
+
+describe("createRecorder", () => {
+  it("creates a recorder with start, stop, status methods", () => {
+    const config = {
+      capture: {
+        native: { bin: "/path/to/record" },
+        vad: { enabled: true },
+      },
+    }
+    const recorder = createRecorder(config)
+    expect(typeof recorder.start).toBe("function")
+    expect(typeof recorder.stop).toBe("function")
+    expect(typeof recorder.status).toBe("function")
+  })
+
+  it("creates a recorder with waitForStop when VAD is configured", () => {
+    const config = {
+      capture: {
+        native: { bin: "/path/to/record" },
+        vad: { enabled: true },
+      },
+    }
+    const recorder = createRecorder(config)
+    expect(typeof recorder.waitForStop).toBe("function")
+  })
+
+  it("falls back to default bin path when not specified", () => {
+    const config = { capture: { native: {} } }
+    const recorder = createRecorder(config)
+    // Should not throw — just uses default path
+    expect(typeof recorder.start).toBe("function")
+  })
+})
+
+describe("createStreamingTranscriber", () => {
+  it("creates a streaming transcriber with start, stop, isActive methods", () => {
+    const config = {
+      provider: {
+        whisperCpp: { model: "/m" },
+        streaming: { bin: "whisper-stream" },
+      },
+    }
+    const streamer = createStreamingTranscriber(config)
+    expect(typeof streamer.start).toBe("function")
+    expect(typeof streamer.stop).toBe("function")
+    expect(typeof streamer.isActive).toBe("function")
+  })
+
+  it("throws TranscriberConfigError if model is missing", () => {
+    const config = {
+      provider: {
+        whisperCpp: { model: "" },
+        streaming: { bin: "whisper-stream" },
+      },
+    }
+    expect(() => createStreamingTranscriber(config)).toThrow(TranscriberConfigError)
+  })
+
+  it("uses defaults for streaming options", () => {
+    const config = {
+      provider: {
+        whisperCpp: { model: "/m" },
+      },
+    }
+    const streamer = createStreamingTranscriber(config)
+    expect(streamer.isActive()).toBe(false)
   })
 })

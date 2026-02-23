@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { EventEmitter } from "node:events"
 import { assertStreamingTranscriberPort } from "../ports/streaming-transcriber.js"
 
 vi.mock("execa", () => ({
@@ -31,6 +32,19 @@ describe("createWhisperStreamTranscriber", () => {
     vi.restoreAllMocks()
   })
 
+  const createMockChild = () => {
+    const stdout = new EventEmitter()
+    const stderr = new EventEmitter()
+    const child = {
+      stdout,
+      stderr,
+      pid: 123,
+      kill: vi.fn(),
+      catch: vi.fn(),
+    }
+    return child
+  }
+
   it("throws if model is missing", async () => {
     const { createWhisperStreamTranscriber } = await import(
       "../adapters/whisper-stream-transcriber.js"
@@ -49,18 +63,8 @@ describe("createWhisperStreamTranscriber", () => {
 
   it("builds correct args for whisper-stream", async () => {
     const { execa } = await import("execa")
-    const { EventEmitter } = await import("node:events")
-
-    const stdout = new EventEmitter()
-    const stderr = new EventEmitter()
-    const mockChild = {
-      stdout,
-      stderr,
-      pid: 123,
-      kill: vi.fn(),
-      catch: vi.fn(),
-    }
-    execa.mockReturnValue(mockChild)
+    const child = createMockChild()
+    execa.mockReturnValue(child)
 
     const { createWhisperStreamTranscriber } = await import(
       "../adapters/whisper-stream-transcriber.js"
@@ -75,7 +79,7 @@ describe("createWhisperStreamTranscriber", () => {
 
     // Start and immediately emit [Start speaking] to resolve the promise
     const startPromise = streamer.start()
-    stderr.emit("data", Buffer.from("[Start speaking]"))
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
     await startPromise
 
     expect(execa).toHaveBeenCalledWith(
@@ -91,5 +95,126 @@ describe("createWhisperStreamTranscriber", () => {
     )
 
     expect(streamer.isActive()).toBe(true)
+  })
+
+  it("becomes active after start and inactive after stop", async () => {
+    const { execa } = await import("execa")
+    const child = createMockChild()
+    execa.mockReturnValue(child)
+
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    expect(streamer.isActive()).toBe(false)
+
+    const startPromise = streamer.start()
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
+    await startPromise
+
+    expect(streamer.isActive()).toBe(true)
+
+    const transcript = await streamer.stop()
+
+    expect(streamer.isActive()).toBe(false)
+    expect(transcript.text).toBe("")
+    expect(transcript.meta.provider).toBe("whisper-stream")
+  })
+
+  it("calls onPartial with cleaned transcription output", async () => {
+    const { execa } = await import("execa")
+    const child = createMockChild()
+    execa.mockReturnValue(child)
+
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    const partials = []
+    const startPromise = streamer.start({
+      onPartial: (text) => partials.push(text),
+    })
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
+    await startPromise
+
+    // Simulate transcription output on stdout
+    child.stdout.emit("data", Buffer.from("  hello world  "))
+    expect(partials).toEqual(["hello world"])
+
+    // Simulate ANSI-escaped output
+    child.stdout.emit("data", Buffer.from("\x1B[2Kmore text"))
+    expect(partials).toEqual(["hello world", "more text"])
+  })
+
+  it("returns empty transcript when stopped without output", async () => {
+    const { execa } = await import("execa")
+    const child = createMockChild()
+    execa.mockReturnValue(child)
+
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    const startPromise = streamer.start()
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
+    await startPromise
+
+    const transcript = await streamer.stop()
+    expect(transcript.isEmpty).toBe(true)
+  })
+
+  it("returns accumulated text on stop", async () => {
+    const { execa } = await import("execa")
+    const child = createMockChild()
+    execa.mockReturnValue(child)
+
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    const startPromise = streamer.start()
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
+    await startPromise
+
+    child.stdout.emit("data", Buffer.from("hello world"))
+    const transcript = await streamer.stop()
+
+    expect(transcript.text).toBe("hello world")
+  })
+
+  it("stop returns empty transcript when not active", async () => {
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    const transcript = await streamer.stop()
+    expect(transcript.isEmpty).toBe(true)
+  })
+
+  it("ignores [Start speaking] markers in stdout", async () => {
+    const { execa } = await import("execa")
+    const child = createMockChild()
+    execa.mockReturnValue(child)
+
+    const { createWhisperStreamTranscriber } = await import(
+      "../adapters/whisper-stream-transcriber.js"
+    )
+    const streamer = createWhisperStreamTranscriber({ model: "/m" })
+
+    const partials = []
+    const startPromise = streamer.start({
+      onPartial: (text) => partials.push(text),
+    })
+    child.stderr.emit("data", Buffer.from("[Start speaking]"))
+    await startPromise
+
+    // This should be ignored because it starts with [
+    child.stdout.emit("data", Buffer.from("[Start speaking]"))
+    expect(partials).toEqual([])
   })
 })
