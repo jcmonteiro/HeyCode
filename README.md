@@ -1,4 +1,4 @@
-# heycode
+# HeyCode
 
 A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Records from your microphone via a native AVFoundation Swift binary, transcribes locally, and returns the text. Also ships an [OpenCode](https://opencode.ai) plugin for hands-free prompts.
 
@@ -9,7 +9,7 @@ A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov
 - **Push-to-talk hotkey**: Global hotkey daemon (Cmd+Shift+Space) for continuous hands-free use
 - **Streaming transcription**: Real-time feedback via `whisper-stream`
 - **Multiple providers**: Local whisper.cpp (default) or OpenAI Whisper API
-- **OpenCode plugin**: `/speech` command and `speech_record` tool for AI-assisted coding
+- **OpenCode plugin**: `/speech` command, `speech_record` tool, and hotkey daemon for AI-assisted coding
 - **Clean architecture**: Hexagonal (ports & adapters) with 107 tests
 
 ## Prerequisites
@@ -78,36 +78,47 @@ heycode daemon --key space --modifiers cmd,shift --clipboard
 
 If you haven't linked the CLI, use `pnpm exec tsx bin/heycode.ts` instead of `heycode`.
 
+### Hotkey daemon
+
+The `daemon` command spawns a native macOS global hotkey listener. Press the hotkey (default Cmd+Shift+Space) to record, and the transcript is printed to stdout (or copied to clipboard with `--clipboard`).
+
+Requires **Accessibility permissions**: System Settings → Privacy & Security → Accessibility. Grant access to the terminal app running the daemon.
+
 ## OpenCode plugin
 
-The repo also provides an OpenCode plugin that exposes heycode's capabilities inside OpenCode as a `/speech` slash command and a `speech_record` tool the LLM can invoke.
+The plugin exposes HeyCode's capabilities inside OpenCode:
+
+- **Hotkey daemon**: spawns at plugin startup, listens for Cmd+Shift+Space globally. Press the hotkey to record, transcribe, and inject the transcript into the TUI input field.
+- **`/speech` command**: explicit trigger for recording. With VAD, one invocation records until silence. Without VAD, toggles start/stop. Also supports `/speech <filepath>` to transcribe a file directly.
+- **`speech_record` tool**: allows the LLM to trigger recording on behalf of the user.
+
+> **Known limitation**: The hotkey daemon currently does not receive keypress events when spawned as a child process of OpenCode. This is likely a macOS Cocoa event loop issue with `NSEvent.addGlobalMonitorForEvents` in child processes. The `/speech` command and `speech_record` tool work fine as alternatives.
 
 ### Plugin installation
 
-The plugin must be installed in OpenCode's **global** config directory (`~/.config/opencode/`), not in a project-local `.opencode/` folder. Three things need to happen:
+The plugin must be installed in OpenCode's **global** config directory (`~/.config/opencode/`), not in a project-local `.opencode/` folder.
 
-#### 1. Copy the plugin file
+#### 1. Symlink the plugin file
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
-cp .opencode/plugins/speech-plugin.js ~/.config/opencode/plugins/
+ln -sf /path/to/HeyCode/.opencode/plugins/speech-plugin.js \
+       ~/.config/opencode/plugins/speech-plugin.js
 ```
 
-The plugin uses absolute imports back into the heycode repo, so the repo must stay in place (or you can update `projectRoot` in the plugin file).
+The plugin resolves the symlink at runtime via `fs.realpathSync` to find the real project root, so imports back into the HeyCode repo work regardless of where the symlink lives.
 
 #### 2. Add plugin dependencies
 
-The plugin needs `@opencode-ai/sdk`, `@opencode-ai/plugin`, and `execa` in the global OpenCode `package.json`. Merge these into `~/.config/opencode/package.json`:
+The plugin needs `@opencode-ai/plugin` in the global OpenCode `package.json`:
 
 ```jsonc
 // ~/.config/opencode/package.json
 {
   "type": "module",
   "dependencies": {
-    "@opencode-ai/plugin": "1.2.10",
-    "@opencode-ai/sdk": "^1.2.10",
-    "execa": "^9.6.1",
-  },
+    "@opencode-ai/plugin": "1.2.10"
+  }
 }
 ```
 
@@ -117,7 +128,9 @@ Then install:
 cd ~/.config/opencode && npm install
 ```
 
-#### 3. Register the `/speech` command
+Other dependencies (`execa`, `commander`, etc.) resolve from the HeyCode project's `node_modules/` via the symlink.
+
+#### 3. Register the /speech command
 
 Add the `speech` command to `~/.config/opencode/opencode.json`:
 
@@ -127,9 +140,9 @@ Add the `speech` command to `~/.config/opencode/opencode.json`:
   "command": {
     "speech": {
       "template": "",
-      "description": "Toggle speech recording or transcribe an audio file",
-    },
-  },
+      "description": "Record speech and transcribe (or /speech <file> to transcribe a file)"
+    }
+  }
 }
 ```
 
@@ -293,9 +306,14 @@ bin/
 
 scripts/
   record.swift         Native macOS recorder source (AVFoundation + VAD)
-  hotkey.swift         Native macOS global hotkey listener
+  hotkey.swift         Native macOS global hotkey listener (NSEvent + Cocoa)
   record               Compiled binary (gitignored)
   hotkey               Compiled binary (gitignored)
+
+.opencode/
+  plugins/
+    speech-plugin.js   OpenCode plugin (plain JS — symlinked into global config)
+  package.json         Plugin dependency declaration
 ```
 
 ### Dependency rule
@@ -343,3 +361,4 @@ pnpm exec vitest run -t "test name"  # Single test
 - Linux/Windows recorder adapters (PulseAudio, ffmpeg)
 - Transcription caching and metadata storage
 - Multi-language auto-detection
+- Fix hotkey daemon inside OpenCode (macOS Cocoa event loop issue with child processes)

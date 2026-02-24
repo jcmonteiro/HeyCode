@@ -144,11 +144,22 @@ Use `vi.spyOn(fs, "readFile")` for node:fs mocks. Call `vi.restoreAllMocks()` in
 - Don't integration-test the actual recorder binary or whisper-cli in unit tests.
 - Don't test the OpenCode plugin directly (depends on `@opencode-ai/plugin` runtime).
 
+## OpenCode Plugin
+
+- The plugin file lives at `.opencode/plugins/speech-plugin.js` (plain JS — loaded by the OpenCode runtime).
+- It is **symlinked** into the global OpenCode config: `~/.config/opencode/plugins/speech-plugin.js` → `.opencode/plugins/speech-plugin.js`.
+- The plugin resolves the symlink at runtime via `fs.realpathSync(fileURLToPath(import.meta.url))` to find the real project root.
+- Plugin dependency (`@opencode-ai/plugin`) is installed in `~/.config/opencode/` (global), not in the repo.
+- Other deps (`execa`, etc.) resolve from the project's `node_modules/` via the symlink path.
+- The `/speech` command is registered in `~/.config/opencode/opencode.json` (global config).
+- Use `client.tui.showToast()` for all user-facing messages — never `console.error`.
+- Must mutate existing `output.parts` in `command.execute.before` — never replace the array.
+
 ## Package Management
 
 - **pnpm** (not npm) for all package management.
 - `pnpm-lock.yaml` is committed; no `package-lock.json`.
-- Plugin deps live in `.opencode/package.json`, not root `package.json`.
+- Plugin deps live in `~/.config/opencode/package.json` (global), not root `package.json`.
 
 ## Git Conventions
 
