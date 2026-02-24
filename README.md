@@ -10,7 +10,7 @@ A macOS speech-to-text CLI powered by [whisper.cpp](https://github.com/ggerganov
 - **Streaming transcription**: Real-time feedback via `whisper-stream`
 - **Multiple providers**: Local whisper.cpp (default) or OpenAI Whisper API
 - **OpenCode plugin**: `/speech` command, `speech_record` tool, and hotkey daemon for AI-assisted coding
-- **Clean architecture**: Hexagonal (ports & adapters) with 107 tests
+- **Clean architecture**: Hexagonal (ports & adapters) with 109 tests
 
 ## Prerequisites
 
@@ -88,29 +88,19 @@ Requires **Accessibility permissions**: System Settings → Privacy & Security �
 
 The plugin exposes HeyCode's capabilities inside OpenCode:
 
-- **Hotkey daemon**: spawns at plugin startup, listens for Cmd+Shift+Space globally. Press the hotkey to record, transcribe, and inject the transcript into the TUI input field.
-- **`/speech` command**: explicit trigger for recording. With VAD, one invocation records until silence. Without VAD, toggles start/stop. Also supports `/speech <filepath>` to transcribe a file directly.
+- **Hotkey daemon**: spawns at plugin startup, listens for Cmd+Shift+Space globally. Press the hotkey to record, transcribe, and automatically submit the transcript as a prompt to the LLM.
+- **`/speech` command**: explicit trigger for recording. With VAD, one invocation records until silence. Without VAD, toggles start/stop. Also supports `/speech <filepath>` to transcribe a file directly. Toast notifications show recording and transcription progress.
 - **`speech_record` tool**: allows the LLM to trigger recording on behalf of the user.
 
 > **Known limitation**: The hotkey daemon currently does not receive keypress events when spawned as a child process of OpenCode. This is likely a macOS Cocoa event loop issue with `NSEvent.addGlobalMonitorForEvents` in child processes. The `/speech` command and `speech_record` tool work fine as alternatives.
 
 ### Plugin installation
 
-The plugin must be installed in OpenCode's **global** config directory (`~/.config/opencode/`), not in a project-local `.opencode/` folder.
+The plugin must be installed in OpenCode's **global** config directory (`~/.config/opencode/`), not in a project-local `.opencode/` folder. Three things need to happen:
 
-#### 1. Symlink the plugin file
+#### 1. Install the plugin dependency
 
-```bash
-mkdir -p ~/.config/opencode/plugins
-ln -sf /path/to/HeyCode/.opencode/plugins/speech-plugin.js \
-       ~/.config/opencode/plugins/speech-plugin.js
-```
-
-The plugin resolves the symlink at runtime via `fs.realpathSync` to find the real project root, so imports back into the HeyCode repo work regardless of where the symlink lives.
-
-#### 2. Add plugin dependencies
-
-The plugin needs `@opencode-ai/plugin` in the global OpenCode `package.json`:
+Create or update `~/.config/opencode/package.json` with the `@opencode-ai/plugin` dependency the plugin imports at load time:
 
 ```jsonc
 // ~/.config/opencode/package.json
@@ -128,15 +118,27 @@ Then install:
 cd ~/.config/opencode && npm install
 ```
 
-Other dependencies (`execa`, `commander`, etc.) resolve from the HeyCode project's `node_modules/` via the symlink.
+> Other dependencies (`execa`, `commander`, etc.) resolve from the HeyCode project's own `node_modules/` via the symlink in step 2 — no need to install them globally.
 
-#### 3. Register the /speech command
+#### 2. Symlink the plugin file
 
-Add the `speech` command to `~/.config/opencode/opencode.json`:
+```bash
+mkdir -p ~/.config/opencode/plugins
+
+ln -sf "$(pwd)/.opencode/plugins/speech-plugin.js" \
+       ~/.config/opencode/plugins/speech-plugin.js
+```
+
+Run the `ln` command from the HeyCode repo root so `$(pwd)` expands to the absolute path. The plugin resolves the symlink at runtime via `fs.realpathSync` to find the real project root, so all imports back into the repo work correctly.
+
+#### 3. Register the /speech command in opencode.json
+
+Merge the `command` block into your `~/.config/opencode/opencode.json`. If the file doesn't exist yet, create it:
 
 ```jsonc
+// ~/.config/opencode/opencode.json
 {
-  // ... existing config ...
+  "$schema": "https://opencode.ai/config.json",
   "command": {
     "speech": {
       "template": "",
@@ -144,6 +146,13 @@ Add the `speech` command to `~/.config/opencode/opencode.json`:
     }
   }
 }
+```
+
+If you already have an `opencode.json` with other config, just add the `"speech"` key inside the existing `"command"` object.
+
+#### Verify
+
+Restart OpenCode. You should see a "Speech plugin loaded" toast on startup. Type `/speech` in the input field to test recording.
 ```
 
 ### Using the plugin
@@ -156,7 +165,11 @@ Add the `speech` command to `~/.config/opencode/opencode.json`:
 /speech path/to.wav  # Transcribe a file directly
 ```
 
-With VAD enabled (default), a single `/speech` starts recording and auto-stops when you stop speaking. The transcript becomes the user message sent to the LLM. Without VAD, `/speech` toggles: first call starts, second call stops and transcribes.
+With VAD enabled (default), a single `/speech` starts recording and auto-stops when you stop speaking. The transcript becomes the user message sent to the LLM. Without VAD, `/speech` toggles: first call starts, second call stops and transcribes. Toast notifications keep you informed of the current state (recording, transcribing, transcript ready).
+
+#### Hotkey (Cmd+Shift+Space)
+
+Press the global hotkey to record. When transcription completes, the transcript is automatically appended to the prompt input and submitted to the LLM — fully hands-free.
 
 #### speech_record tool
 
@@ -339,7 +352,7 @@ pnpm run test:watch    # Watch mode
 pnpm exec vitest run -t "test name"  # Single test
 ```
 
-107 tests organized by behavior:
+109 tests organized by behavior:
 
 | File                               | Tests | What it covers                                       |
 | ---------------------------------- | ----- | ---------------------------------------------------- |
@@ -351,7 +364,7 @@ pnpm exec vitest run -t "test name"  # Single test
 | `start-and-wait-recording.test.ts` | 8     | VAD record use case, waitForStop guard               |
 | `whisper-cpp-transcriber.test.ts`  | 8     | Arg construction, text normalization, error wrapping |
 | `openai-transcriber.test.ts`       | 7     | API calls, normalization, error wrapping             |
-| `native-recorder.test.ts`          | 12    | State persistence, start/stop, VAD flags             |
+| `native-recorder.test.ts`          | 14    | State persistence, start/stop, VAD flags, race conditions |
 | `streaming-transcriber.test.ts`    | 13    | Port guard, args, onPartial, stop, isActive          |
 | `config.test.ts`                   | 8     | Config loading, merging, env override                |
 | `factories.test.ts`                | 11    | Recorder, transcriber, streaming factory wiring      |

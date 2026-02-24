@@ -4,7 +4,7 @@
 
 ```bash
 pnpm build               # Compile Swift binaries + TypeScript (swiftc + tsc)
-pnpm test                 # Run all 107 tests once (vitest run)
+pnpm test                 # Run all 109 tests once (vitest run)
 pnpm run test:watch       # Watch mode (vitest)
 pnpm exec vitest run src/__tests__/domain.test.ts          # Single test file
 pnpm exec vitest run -t "starts recording when idle"       # Single test by name
