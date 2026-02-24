@@ -61,11 +61,16 @@ export function createHotkeyDaemon({
   let stopped = false
   let child: ResultPromise | null = null
 
+  let busy = false
+
   const emit = (status: string): void => {
     onStatusChange?.(status)
   }
 
   const handleTrigger = async (): Promise<void> => {
+    if (busy) return
+    busy = true
+
     try {
       // Clean up trigger file immediately
       try {
@@ -99,6 +104,8 @@ export function createHotkeyDaemon({
     } catch (err) {
       emit("error")
       onError?.(err instanceof Error ? err : new Error(String(err)))
+    } finally {
+      busy = false
     }
   }
 
