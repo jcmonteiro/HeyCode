@@ -217,8 +217,9 @@ function startHotkeyDaemon(client) {
       await toast(client, "Transcript ready", "success")
       try {
         await client.tui.appendPrompt({ body: { text: result.transcript.text } })
+        await client.tui.submitPrompt()
       } catch {
-        await toast(client, "Failed to append transcript to prompt", "error")
+        await toast(client, "Failed to submit transcript", "error")
       }
     } catch (err) {
       await toast(client, `Speech error: ${err.message || err}`, "error")
@@ -246,7 +247,7 @@ function startHotkeyDaemon(client) {
 // Shared record-and-transcribe helper (used by both /speech and hotkey)
 // ---------------------------------------------------------------------------
 
-const recordAndTranscribeWithStatus = async () => {
+const recordAndTranscribeWithStatus = async (client) => {
   const { recorder, transcriber } = await getDeps()
   const { recordAndTranscribe } = await import(
     path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
@@ -256,6 +257,8 @@ const recordAndTranscribeWithStatus = async () => {
     recorder,
     transcriber,
     vadEnabled: _vadEnabled,
+    onStarted: () => toast(client, "Recording..."),
+    onStopped: () => toast(client, "Transcribing..."),
   })
 
   return result
@@ -315,7 +318,7 @@ const SpeechPlugin = async ({ client }) => {
         }
 
         // Record and transcribe (handles both VAD and toggle modes)
-        const result = await recordAndTranscribeWithStatus()
+        const result = await recordAndTranscribeWithStatus(client)
 
         if (result.action === "started") {
           await toast(
@@ -382,7 +385,7 @@ const SpeechPlugin = async ({ client }) => {
           }
 
           // Record and transcribe (handles both VAD and toggle modes)
-          const result = await recordAndTranscribeWithStatus()
+          const result = await recordAndTranscribeWithStatus(client)
 
           if (result.action === "started") {
             await toast(client, "Recording... call again to stop")
