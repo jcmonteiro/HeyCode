@@ -187,4 +187,44 @@ describe("createNativeRecorder", () => {
     const recorder = createNativeRecorder({ binPath: "/bin/record" })
     await expect(recorder.stop()).rejects.toThrow(NoActiveRecordingError)
   })
+
+  it("waitForStop returns outputPath when state is cleared by concurrent stop", async () => {
+    // 1. Mock start: no existing state, create child, write state
+    const readFileSpy = vi.spyOn(fs, "readFile")
+    readFileSpy.mockRejectedValueOnce(new Error("ENOENT")) // start: readState (no existing)
+
+    vi.spyOn(fs, "mkdtemp").mockResolvedValue("/tmp/heycode-audio-race")
+    vi.spyOn(fs, "mkdir").mockResolvedValue(undefined)
+    vi.spyOn(fs, "writeFile").mockResolvedValue(undefined)
+    vi.spyOn(fs, "unlink").mockResolvedValue(undefined)
+
+    const child = mockChild("recording:/tmp/heycode-audio-race/test.wav")
+    execa.mockReturnValue(child)
+
+    const recorder = createNativeRecorder({
+      binPath: "/bin/record",
+      vad: { enabled: true },
+    })
+
+    await recorder.start()
+
+    // 2. Simulate state being cleared (as if a concurrent stop() ran)
+    readFileSpy.mockRejectedValue(new Error("ENOENT"))
+
+    // 3. waitForStop should fall back to in-memory lastOutputPath, not throw
+    const outputPath = await recorder.waitForStop!()
+    expect(outputPath).toContain("/tmp/heycode-audio-race/")
+  })
+
+  it("waitForStop throws NoActiveRecordingError when no state and no prior start", async () => {
+    vi.spyOn(fs, "readFile").mockRejectedValue(new Error("ENOENT"))
+
+    const recorder = createNativeRecorder({
+      binPath: "/bin/record",
+      vad: { enabled: true },
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- VAD enabled, waitForStop exists
+    await expect(recorder.waitForStop!()).rejects.toThrow(NoActiveRecordingError)
+  })
 })
