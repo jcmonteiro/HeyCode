@@ -102,6 +102,10 @@ export function createNativeRecorder({ binPath, cacheDir, vad }: NativeRecorderO
   const stateOpts: StateOpts = { cacheDir }
   const vadEnabled = vad?.enabled ?? false
 
+  // Track the most recent output path in memory so waitForStop can still
+  // return it even if the state file was cleared by a concurrent stop().
+  let lastOutputPath: string | null = null
+
   const recorder: RecorderPort = {
     async start() {
       const existing = await readState(stateOpts)
@@ -114,6 +118,7 @@ export function createNativeRecorder({ binPath, cacheDir, vad }: NativeRecorderO
 
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), "heycode-audio-"))
       const outputPath = path.join(dir, `recording-${Date.now()}.wav`)
+      lastOutputPath = outputPath
 
       const binArgs: string[] = [outputPath]
 
@@ -197,16 +202,25 @@ export function createNativeRecorder({ binPath, cacheDir, vad }: NativeRecorderO
   // waitForStop would poll forever on a process that never exits.
   if (vadEnabled) {
     recorder.waitForStop = async (): Promise<string> => {
-      // Poll until the recording process exits (auto-stop via VAD or signal)
+      // Poll until the recording process exits (auto-stop via VAD or signal).
+      // If the state file was already cleared (e.g. by a concurrent stop()),
+      // fall back to the in-memory lastOutputPath — the audio file is still
+      // on disk, we just lost the state pointer.
       while (true) {
         const existing = await readState(stateOpts)
         if (!existing?.pid) {
+          if (lastOutputPath) {
+            const result = lastOutputPath
+            lastOutputPath = null
+            return result
+          }
           throw new NoActiveRecordingError()
         }
 
         if (!isAlive(existing.pid)) {
           const outputPath = existing.outputPath
           await clearState(stateOpts)
+          lastOutputPath = null
           return outputPath
         }
 
