@@ -36,9 +36,6 @@ import { fileURLToPath } from "node:url"
 const __dirname = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)))
 const projectRoot = path.resolve(__dirname, "..", "..")
 
-const log = (/** @type {string} */ msg) =>
-  console.error(`[speech-plugin] ${msg}`)
-
 // ---------------------------------------------------------------------------
 // Lazy-loaded dependencies (avoids top-level import issues in plugin context)
 // ---------------------------------------------------------------------------
@@ -98,6 +95,18 @@ const setCommandText = (output, text) => {
 }
 
 // ---------------------------------------------------------------------------
+// Toast helpers (never throw — TUI may not be ready)
+// ---------------------------------------------------------------------------
+
+const toast = async (client, message, variant = "info") => {
+  try {
+    await client.tui.showToast({ body: { message, variant } })
+  } catch {
+    // TUI not ready
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hotkey daemon — spawns native binary, listens for trigger events
 // ---------------------------------------------------------------------------
 
@@ -112,8 +121,6 @@ function startHotkeyDaemon(client) {
       || path.resolve(projectRoot, "scripts", "hotkey")
     const key = _config?.capture?.hotkey?.key || "space"
     const modifiers = _config?.capture?.hotkey?.modifiers || "cmd,shift"
-
-    log(`starting daemon: ${hotkeyBin} --key ${key} --modifiers ${modifiers}`)
 
     child = spawn(hotkeyBin, ["--key", key, "--modifiers", modifiers], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -150,18 +157,17 @@ function startHotkeyDaemon(client) {
     child.stdout.on("data", (data) => {
       const line = data.toString().trim()
       if (line === "triggered") {
-        log("hotkey triggered")
         handleHotkey(client)
       }
     })
 
-    child.stderr.on("data", (data) => {
-      log(`hotkey stderr: ${data.toString().trim()}`)
+    child.stderr.on("data", () => {
+      // Silently ignore — hotkey binary stderr is not actionable
     })
 
-    child.on("exit", (code) => {
+    child.on("exit", () => {
       if (child) {
-        log(`hotkey daemon exited with code ${code}`)
+        toast(client, "Hotkey daemon exited unexpectedly", "error")
       }
     })
   }
@@ -176,43 +182,46 @@ function startHotkeyDaemon(client) {
         path.join(projectRoot, "src", "usecases", "record-and-transcribe.js")
       )
 
-      log("recording...")
-
       const result = await recordAndTranscribe({
         recorder,
         transcriber,
         vadEnabled: _vadEnabled,
-        onStarted: () => log("recording started"),
-        onStopped: () => log("transcribing..."),
+        onStarted: () => toast(client, "Recording..."),
+        onStopped: () => toast(client, "Transcribing..."),
       })
 
       if (result.action === "started") {
-        log("recording started (toggle mode — press hotkey again to stop)")
+        await toast(
+          client,
+          _vadEnabled
+            ? "Recording... will auto-stop on silence"
+            : "Recording... press hotkey again to stop",
+        )
         busy = false
         return
       }
 
       if (result.action === "cancelled") {
-        log("recording cancelled")
+        await toast(client, "Recording cancelled", "warning")
         busy = false
         return
       }
 
       // action === "stopped" — transcription complete
       if (result.transcript.isEmpty) {
-        log("no speech detected")
+        await toast(client, "No speech detected — try again", "warning")
         busy = false
         return
       }
 
-      log(`transcript: ${result.transcript.text.slice(0, 80)}...`)
+      await toast(client, "Transcript ready", "success")
       try {
         await client.tui.appendPrompt({ body: { text: result.transcript.text } })
-      } catch (err) {
-        log(`failed to append prompt: ${err.message || err}`)
+      } catch {
+        await toast(client, "Failed to append transcript to prompt", "error")
       }
     } catch (err) {
-      log(`speech error: ${err.message || err}`)
+      await toast(client, `Speech error: ${err.message || err}`, "error")
     } finally {
       busy = false
     }
@@ -227,7 +236,6 @@ function startHotkeyDaemon(client) {
       } catch {
         // already gone
       }
-      log("daemon stopped")
     }
   }
 
@@ -238,10 +246,6 @@ function startHotkeyDaemon(client) {
 // Shared record-and-transcribe helper (used by both /speech and hotkey)
 // ---------------------------------------------------------------------------
 
-/**
- * Record and transcribe, returning a status string.
- * Caller decides what to do with the result (set command text, append prompt, etc.)
- */
 const recordAndTranscribeWithStatus = async () => {
   const { recorder, transcriber } = await getDeps()
   const { recordAndTranscribe } = await import(
@@ -263,17 +267,23 @@ const recordAndTranscribeWithStatus = async () => {
 
 /** @type {import("@opencode-ai/plugin").Plugin} */
 const SpeechPlugin = async ({ client }) => {
+  let greeted = false
   const daemon = startHotkeyDaemon(client)
 
   // Start daemon asynchronously — don't block plugin init
   daemon.start().then(() => {
-    log("daemon ready")
+    toast(client, "Speech plugin ready (Cmd+Shift+Space)", "success")
   }).catch((err) => {
-    log(`daemon failed to start: ${err.message || err}`)
+    toast(client, `Speech daemon failed: ${err.message || err}`, "error")
   })
 
   return {
     event: async ({ event }) => {
+      if (!greeted && event.type === "server.connected") {
+        greeted = true
+        await toast(client, "Speech plugin loaded", "success")
+      }
+
       // Clean up daemon when OpenCode exits
       if (event.type === "server.instance.disposed") {
         daemon.stop()
@@ -292,12 +302,14 @@ const SpeechPlugin = async ({ client }) => {
           const { transcribeFile } = await import(
             path.join(projectRoot, "src", "usecases", "transcribe-file.js")
           )
-          log(`transcribing file: ${args}`)
+          await toast(client, "Transcribing file...")
           const transcript = await transcribeFile({ transcriber, filePath: args })
           if (transcript.isEmpty) {
             setCommandText(output, "[No speech detected in file]")
+            await toast(client, "No speech detected in file", "warning")
           } else {
             setCommandText(output, transcript.text)
+            await toast(client, "Transcript ready", "success")
           }
           return
         }
@@ -306,7 +318,12 @@ const SpeechPlugin = async ({ client }) => {
         const result = await recordAndTranscribeWithStatus()
 
         if (result.action === "started") {
-          log("recording started (toggle mode)")
+          await toast(
+            client,
+            _vadEnabled
+              ? "Recording... will auto-stop on silence"
+              : "Recording... type /speech again to stop",
+          )
           setCommandText(
             output,
             "[Recording started — say /speech again to stop and transcribe]",
@@ -315,22 +332,22 @@ const SpeechPlugin = async ({ client }) => {
         }
 
         if (result.action === "cancelled") {
-          log("recording cancelled")
+          await toast(client, "Recording cancelled", "warning")
           setCommandText(output, "[Recording cancelled]")
           return
         }
 
         // action === "stopped"
         if (result.transcript.isEmpty) {
-          log("no speech detected")
+          await toast(client, "No speech detected — try again", "warning")
           setCommandText(output, "[No speech detected]")
           return
         }
 
-        log(`transcript: ${result.transcript.text.slice(0, 80)}...`)
+        await toast(client, "Transcript ready", "success")
         setCommandText(output, result.transcript.text)
       } catch (err) {
-        log(`speech error: ${err.message || err}`)
+        await toast(client, `Speech error: ${err.message || err}`, "error")
         setCommandText(output, `[Speech error: ${err.message || err}]`)
       }
     },
@@ -368,6 +385,7 @@ const SpeechPlugin = async ({ client }) => {
           const result = await recordAndTranscribeWithStatus()
 
           if (result.action === "started") {
+            await toast(client, "Recording... call again to stop")
             return "Recording started. Call this tool again (without arguments) to stop and get the transcript."
           }
 
@@ -377,9 +395,11 @@ const SpeechPlugin = async ({ client }) => {
 
           // action === "stopped"
           if (result.transcript.isEmpty) {
+            await toast(client, "No speech detected", "warning")
             return "No speech detected. The recording was silent. Ask the user to try again."
           }
 
+          await toast(client, "Transcription complete", "success")
           return `Transcript: ${result.transcript.text}`
         },
       }),
